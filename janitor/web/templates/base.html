@@ -80,10 +80,9 @@
           </button>
 
           <!-- Logo -->
-          <a href="{{ url_for('main.dashboard') }}" class="flex items-center shrink-0">
-            <img src="{{ url_for('static', filename='img/logo.png') }}"
-                 alt="Docker Janitor"
-                 class="h-11 w-auto object-contain" />
+          <a href="{{ url_for('main.dashboard') }}"
+             class="flex items-center shrink-0 text-base font-semibold text-gray-900 dark:text-gray-100 tracking-tight">
+            Docker Janitor
           </a>
 
           <!-- Top nav links (hidden on small screens — use sidebar) -->
@@ -179,8 +178,7 @@
                 border-r border-gray-200 dark:border-gray-700 px-3 py-5 space-y-6
                 shadow-xl lg:hidden overflow-y-auto">
     <div class="flex items-center justify-between px-3 mb-2">
-      <img src="{{ url_for('static', filename='img/logo.png') }}"
-           alt="Docker Janitor" class="h-8 w-auto object-contain" />
+      <span class="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-tight">Docker Janitor</span>
       <button onclick="closeMobileSidebar()"
               class="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200
                      rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
