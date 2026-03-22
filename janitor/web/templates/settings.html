@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %} — Settings{% endblock %}
+
+{% block content %}
+
+{% set policy = cfg.get('policy', {}) %}
+{% set notif  = cfg.get('notifications', {}) %}
+
+{% set input_cls = "w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2
+                    text-sm text-gray-900 dark:text-gray-100
+                    bg-white dark:bg-gray-700
+                    placeholder-gray-400 dark:placeholder-gray-500
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" %}
+{% set card_cls  = "bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5" %}
+{% set label_cls = "block text-sm text-gray-600 dark:text-gray-300 mb-1" %}
+{% set h2_cls    = "text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1" %}
+{% set desc_cls  = "text-xs text-gray-400 dark:text-gray-500 mb-4" %}
+{% set check_cls = "mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700" %}
+{% set code_cls  = "bg-gray-100 dark:bg-gray-700 dark:text-gray-300 px-1 rounded" %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Settings</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Configure cleanup policy rules and notification channels.</p>
+  </div>
+</div>
+
+<form action="{{ url_for('main.settings_save') }}" method="post" class="max-w-xl space-y-6">
+
+  <!-- Retention -->
+  <div class="{{ card_cls }}">
+    <h2 class="{{ h2_cls }}">Retention</h2>
+    <p class="{{ desc_cls }}">Remove images older than this many days. Leave blank to disable.</p>
+    <label class="{{ label_cls }}" for="retention_days">Max age (days)</label>
+    <input id="retention_days" name="retention_days" type="number" min="1"
+           value="{{ policy.get('retention_days', '') }}" placeholder="e.g. 30"
+           class="{{ input_cls }}" />
+  </div>
+
+  <!-- Min versions -->
+  <div class="{{ card_cls }}">
+    <h2 class="{{ h2_cls }}">Min versions</h2>
+    <p class="{{ desc_cls }}">Always keep at least this many versions of each image repository. Leave blank to disable.</p>
+    <label class="{{ label_cls }}" for="min_versions">Min versions per repo</label>
+    <input id="min_versions" name="min_versions" type="number" min="1"
+           value="{{ policy.get('min_versions', 0) or '' }}" placeholder="e.g. 2"
+           class="{{ input_cls }}" />
+  </div>
+
+  <!-- Keep patterns -->
+  <div class="{{ card_cls }}">
+    <h2 class="{{ h2_cls }}">Keep patterns</h2>
+    <p class="{{ desc_cls }}">
+      Never delete images whose tag matches one of these patterns.
+      Supports wildcards (<code class="{{ code_cls }}">*</code>, <code class="{{ code_cls }}">?</code>). One pattern per line.
+    </p>
+    <label class="{{ label_cls }}" for="keep_patterns">Patterns</label>
+    <textarea id="keep_patterns" name="keep_patterns" rows="4"
+              placeholder="production-*&#10;latest&#10;stable"
+              class="{{ input_cls }} font-mono resize-y"
+    >{{ (policy.get('keep_patterns') or []) | join('\n') }}</textarea>
+  </div>
+
+  <!-- Container cleanup -->
+  <div class="{{ card_cls }}">
+    <h2 class="{{ h2_cls }}">Container cleanup</h2>
+    <p class="{{ desc_cls }}">
+      Remove stopped containers older than this many days.
+      Set to <code class="{{ code_cls }}">0</code> to disable (default).
+    </p>
+    <label class="{{ label_cls }}" for="container_retention_days">Max age (days) — 0 = disabled</label>
+    <input id="container_retention_days" name="container_retention_days" type="number" min="0"
+           value="{{ policy.get('container_retention_days', 0) }}" placeholder="0"
+           class="{{ input_cls }}" />
+  </div>
+
+  <!-- Volume cleanup -->
+  <div class="{{ card_cls }}">
+    <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4">Volume cleanup</h2>
+    <label class="flex items-start gap-3 cursor-pointer">
+      <input type="checkbox" name="cleanup_orphaned_volumes"
+             {% if policy.get('cleanup_orphaned_volumes', false) %}checked{% endif %}
+             class="{{ check_cls }}" />
+      <div>
+        <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">Clean up orphaned volumes</span>
+        <span class="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">Flag volumes that are not mounted by any container as safe to delete.</span>
+      </div>
+    </label>
+  </div>
+
+  <!-- Protection -->
+  <div class="{{ card_cls }}">
+    <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4">Protection</h2>
+    <div class="space-y-4">
+      <label class="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" name="protect_running"
+               {% if policy.get('protect_running', false) %}checked{% endif %}
+               class="{{ check_cls }}" />
+        <div>
+          <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">Protect running containers</span>
+          <span class="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">Never delete images that are currently in use by a running container.</span>
+        </div>
+      </label>
+      <label class="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" name="protect_named"
+               {% if policy.get('protect_named', false) %}checked{% endif %}
+               class="{{ check_cls }}" />
+        <div>
+          <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">Protect named images</span>
+          <span class="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">Never delete images that have at least one named tag (excludes dangling images).</span>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <!-- Notifications -->
+  <div class="{{ card_cls }}">
+    <h2 class="{{ h2_cls }}">Notifications</h2>
+    <p class="{{ desc_cls }}">
+      Choose which channels receive a cleanup summary after each run.
+      Credentials are read from environment variables — never stored in this file.
+    </p>
+    <div class="space-y-4">
+      {% set notif_items = [
+        ('notif_cli',     (notif.get('cli')     or {}).get('enabled', true),  'Application log',  'Print a summary to the server log after every cleanup. Always available.', ''),
+        ('notif_slack',   (notif.get('slack')   or {}).get('enabled', false), 'Slack',             'Post to a Slack channel via incoming webhook.', 'SLACK_WEBHOOK_URL'),
+        ('notif_webhook', (notif.get('webhook') or {}).get('enabled', false), 'Webhook',           'POST a JSON payload to any HTTP endpoint.', 'JANITOR_WEBHOOK_URL'),
+        ('notif_email',   (notif.get('email')   or {}).get('enabled', false), 'Email (SMTP)',      'Send an HTML cleanup report via SMTP.', 'SMTP_HOST'),
+      ] %}
+      {% for name, checked, title, desc, env_var in notif_items %}
+        <label class="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" name="{{ name }}"
+                 {% if checked %}checked{% endif %}
+                 class="{{ check_cls }}" />
+          <div>
+            <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">{{ title }}</span>
+            <span class="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              {{ desc }}
+              {% if env_var %}
+                Requires <code class="{{ code_cls }}">{{ env_var }}</code> in your <code class="{{ code_cls }}">.env</code>.
+              {% endif %}
+            </span>
+          </div>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="flex items-center gap-3">
+    <button type="submit"
+            class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800
+                   text-white text-sm font-medium px-5 py-2 rounded-md transition-colors">
+      Save changes
+    </button>
+    <a href="{{ url_for('main.settings') }}"
+       class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+      Cancel
+    </a>
+  </div>
+
+</form>
+
+{% endblock %}

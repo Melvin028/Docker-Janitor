@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% block title %} — Cleanup{% endblock %}
+
+{% block content %}
+
+{% macro humanize(n) %}
+  {%- if n >= 1073741824 -%}{{ "%.2f"|format(n / 1073741824) }} GB
+  {%- elif n >= 1048576 -%}{{ "%.1f"|format(n / 1048576) }} MB
+  {%- elif n >= 1024 -%}{{ "%.0f"|format(n / 1024) }} KB
+  {%- else -%}{{ n }} B
+  {%- endif %}
+{% endmacro %}
+
+{% macro type_badge(t) %}
+  {%- if t == 'image' -%}
+    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">Image</span>
+  {%- elif t == 'container' -%}
+    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">Container</span>
+  {%- elif t == 'volume' -%}
+    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Volume</span>
+  {%- elif t == 'network' -%}
+    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400">Network</span>
+  {%- endif %}
+{% endmacro %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Cleanup</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Review the plan, then execute.</p>
+  </div>
+</div>
+
+{% if not result %}
+  <div class="flex flex-col items-center justify-center py-24 text-center">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+    </svg>
+    <h2 class="text-base font-medium text-gray-700 dark:text-gray-300 mb-1">No scan data yet</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Run a scan first to identify resources eligible for cleanup.</p>
+    <form action="{{ url_for('main.do_scan') }}" method="post">
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700
+                     text-white text-sm font-medium px-5 py-2 rounded-md transition-colors">
+        Run scan
+      </button>
+    </form>
+  </div>
+
+{% else %}
+
+  {% set total_bytes   = namespace(value=0) %}
+  {% set img_count     = namespace(value=0) %}
+  {% set ctr_count     = namespace(value=0) %}
+  {% set vol_count     = namespace(value=0) %}
+  {% for item in preview_items %}
+    {% set total_bytes.value = total_bytes.value + item.size_bytes %}
+    {% if item.resource_type == 'image' %}     {% set img_count.value = img_count.value + 1 %}     {% endif %}
+    {% if item.resource_type == 'container' %} {% set ctr_count.value = ctr_count.value + 1 %} {% endif %}
+    {% if item.resource_type == 'volume' %}    {% set vol_count.value = vol_count.value + 1 %}    {% endif %}
+  {% endfor %}
+
+  {% set has_resources = preview_items|length > 0 %}
+  {% set has_cache     = cache_bytes > 0 %}
+
+  {% if not has_resources and not has_cache %}
+    <div class="flex flex-col items-center justify-center py-24 text-center">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-green-300 dark:text-green-700 mb-4" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 12.586 7.707 11.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+      </svg>
+      <h2 class="text-base font-medium text-gray-700 dark:text-gray-300 mb-1">Everything is clean</h2>
+      <p class="text-sm text-gray-500 dark:text-gray-400">All resources are within policy limits and build cache is empty.</p>
+    </div>
+
+  {% else %}
+
+    {% if has_resources %}
+
+      <!-- Tab bar -->
+      <div class="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+        <button id="tab-plan" onclick="switchTab('plan')"
+                class="flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2
+                       border-blue-600 text-blue-700 dark:text-blue-400 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+            <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/>
+          </svg>
+          Plan
+          <span class="ml-1 px-1.5 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 font-semibold">
+            {{ preview_items|length }}
+          </span>
+        </button>
+        <button id="tab-action" onclick="switchTab('action')"
+                class="flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2
+                       border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
+          </svg>
+          Action
+        </button>
+      </div>
+
+      <!-- PLAN panel -->
+      <div id="panel-plan">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          {% set plan_cards = [
+            ('Would remove', preview_items|length, ('' ~ preview_items|length ~ ' resource' ~ ('s' if preview_items|length != 1)), 'gray'),
+            ('Space to free', '', '', 'green'),
+            ('Images', img_count.value, 'flagged', 'blue'),
+            ('Containers / Volumes', ctr_count.value + vol_count.value, '', 'gray'),
+          ] %}
+          <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Would remove</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ preview_items|length }}</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">resource{{ 's' if preview_items|length != 1 }}</p>
+          </div>
+          <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Space to free</p>
+            <p class="text-2xl font-bold text-green-600 dark:text-green-400">
+              {% if total_bytes.value > 0 %}{{ humanize(total_bytes.value) }}{% else %}—{% endif %}
+            </p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">estimated</p>
+          </div>
+          <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Images</p>
+            <p class="text-2xl font-bold text-blue-700 dark:text-blue-400">{{ img_count.value }}</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">flagged</p>
+          </div>
+          <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Containers / Volumes</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ ctr_count.value + vol_count.value }}</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+              {% set parts = [] %}
+              {% if ctr_count.value > 0 %}{% set _ = parts.append(ctr_count.value ~ ' container' ~ ('s' if ctr_count.value != 1)) %}{% endif %}
+              {% if vol_count.value > 0 %}{% set _ = parts.append(vol_count.value ~ ' volume' ~ ('s' if vol_count.value != 1)) %}{% endif %}
+              {{ parts|join(', ') if parts else 'none' }}
+            </p>
+          </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-5">
+          <div class="px-5 py-3.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+            <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Resources that would be removed</p>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide border-b border-gray-100 dark:border-gray-700">
+                  <th class="px-5 py-2.5 text-left font-medium">Resource</th>
+                  <th class="px-5 py-2.5 text-left font-medium">Type</th>
+                  <th class="px-5 py-2.5 text-right font-medium">Size</th>
+                  <th class="px-5 py-2.5 text-right font-medium hidden sm:table-cell">Age</th>
+                  <th class="px-5 py-2.5 text-left font-medium hidden lg:table-cell">Reason</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                {% for item in preview_items %}
+                  <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    <td class="px-5 py-3 font-mono text-xs text-gray-800 dark:text-gray-200 truncate max-w-[180px]" title="{{ item.display_name }}">{{ item.display_name }}</td>
+                    <td class="px-5 py-3">{{ type_badge(item.resource_type) }}</td>
+                    <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums text-xs">
+                      {% if item.size_bytes > 0 %}{{ item.size_human }}{% else %}<span class="text-gray-300 dark:text-gray-600">—</span>{% endif %}
+                    </td>
+                    <td class="px-5 py-3 text-right text-gray-500 dark:text-gray-400 text-xs hidden sm:table-cell">
+                      {% if item.age_days > 0 %}{{ item.age_days }}d{% else %}<span class="text-gray-300 dark:text-gray-600">—</span>{% endif %}
+                    </td>
+                    <td class="px-5 py-3 text-gray-400 dark:text-gray-500 text-xs truncate max-w-[220px] hidden lg:table-cell" title="{{ item.reason }}">{{ item.reason }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl px-5 py-4 flex flex-wrap items-start justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+            </svg>
+            <div>
+              <p class="text-sm font-medium text-blue-800 dark:text-blue-300">This is a simulation — no changes have been made.</p>
+              <p class="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                Results are based on your current policy settings. Switch to <strong>Action</strong> to select and execute deletions.
+              </p>
+            </div>
+          </div>
+          <button type="button" onclick="switchTab('action')"
+                  class="shrink-0 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700
+                         text-white text-xs font-medium px-3.5 py-2 rounded-md transition-colors whitespace-nowrap">
+            Go to Action →
+          </button>
+        </div>
+      </div>
+
+      <!-- ACTION panel -->
+      <div id="panel-action" class="hidden">
+
+        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-5 py-4 mb-5 flex items-start gap-3">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3-1.742 3H4.42c-1.53 0-2.493-1.667-1.743-3l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+          </svg>
+          <div>
+            <p class="text-sm font-medium text-amber-800 dark:text-amber-300">
+              {{ preview_items|length }} resource{{ 's' if preview_items|length != 1 }} flagged for removal
+              {% if total_bytes.value > 0 %}&nbsp;·&nbsp; {{ humanize(total_bytes.value) }} reclaimable{% endif %}
+            </p>
+            <p class="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+              Select resources to delete, then click <strong>Run cleanup</strong>. Deletions are permanent.
+            </p>
+          </div>
+        </div>
+
+        <form id="cleanup-form" action="{{ url_for('main.cleanup_execute') }}" method="post">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+              <input type="checkbox" id="select-all" onchange="toggleAll(this)"
+                     class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600
+                            focus:ring-blue-500 dark:bg-gray-700" />
+              Select all
+            </label>
+            <div class="flex items-center gap-3">
+              <span id="selection-label" class="text-sm text-gray-400 dark:text-gray-500">0 selected</span>
+              <button id="run-btn" type="button" disabled onclick="openModal()"
+                      class="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700
+                             disabled:opacity-40 disabled:cursor-not-allowed
+                             text-white text-sm font-medium px-4 py-1.5 rounded-md transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+                Run cleanup
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide
+                             bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
+                    <th class="w-10 px-4 py-3"></th>
+                    <th class="px-4 py-3 text-left font-medium">Resource</th>
+                    <th class="px-4 py-3 text-left font-medium">Type</th>
+                    <th class="px-4 py-3 text-right font-medium">Size</th>
+                    <th class="px-4 py-3 text-right font-medium hidden sm:table-cell">Age</th>
+                    <th class="px-4 py-3 text-left font-medium hidden lg:table-cell">Reason</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                  {% for item in preview_items %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 item-row"
+                        data-name="{{ item.display_name }}"
+                        data-size="{{ item.size_bytes }}"
+                        data-size-human="{{ item.size_human }}">
+                      <td class="px-4 py-3 text-center">
+                        <input type="checkbox" name="resource_ids" value="{{ item.resource_id }}"
+                               class="item-checkbox h-4 w-4 rounded border-gray-300 dark:border-gray-600
+                                      text-blue-600 focus:ring-blue-500 dark:bg-gray-700 cursor-pointer"
+                               onchange="onCheckboxChange()" />
+                      </td>
+                      <td class="px-4 py-3 font-mono text-xs text-gray-800 dark:text-gray-200 truncate max-w-[180px] resource-name"
+                          title="{{ item.display_name }}">{{ item.display_name }}</td>
+                      <td class="px-4 py-3">{{ type_badge(item.resource_type) }}</td>
+                      <td class="px-4 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums text-xs">
+                        {% if item.size_bytes > 0 %}{{ item.size_human }}{% else %}<span class="text-gray-300 dark:text-gray-600">—</span>{% endif %}
+                      </td>
+                      <td class="px-4 py-3 text-right text-gray-500 dark:text-gray-400 text-xs hidden sm:table-cell">
+                        {% if item.age_days > 0 %}{{ item.age_days }}d{% else %}<span class="text-gray-300 dark:text-gray-600">—</span>{% endif %}
+                      </td>
+                      <td class="px-4 py-3 text-gray-400 dark:text-gray-500 text-xs truncate max-w-[200px] hidden lg:table-cell"
+                          title="{{ item.reason }}">{{ item.reason }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </form>
+      </div>
+
+    {% else %}
+      <div class="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-5 py-4 mb-6">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 12.586 7.707 11.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+        </svg>
+        <div>
+          <p class="text-sm font-medium text-green-800 dark:text-green-300">All resources are within policy limits.</p>
+          <p class="text-xs text-green-600 dark:text-green-400 mt-0.5">
+            Adjust <a href="{{ url_for('main.settings') }}" class="underline">settings</a> to change retention thresholds or enable container/volume cleanup.
+          </p>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Build cache section -->
+    {% if has_cache %}
+      <div class="mt-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 gap-3">
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-teal-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.123.489.804.804A1 1 0 0113 18H7a1 1 0 01-.707-1.707l.804-.804L7.22 15H5a2 2 0 01-2-2V5zm5.771 7H5V5h10v7H8.771z" clip-rule="evenodd"/>
+            </svg>
+            <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-200">Build cache</h2>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400">
+              {{ cache_count }} unused layer{{ 's' if cache_count != 1 }}
+            </span>
+          </div>
+          <form action="{{ url_for('main.cleanup_prune_cache') }}" method="post"
+                onsubmit="return confirm('Prune all unused build cache layers? This cannot be undone.')">
+            <button type="submit"
+                    class="inline-flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700
+                           active:bg-teal-800 text-white text-sm font-medium px-4 py-1.5 rounded-md transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+              </svg>
+              Prune all unused
+            </button>
+          </form>
+        </div>
+
+        <div class="px-5 py-5">
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+            <div class="bg-teal-50 dark:bg-teal-900/20 rounded-lg border border-teal-100 dark:border-teal-800 px-4 py-3">
+              <p class="text-xs font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wide mb-1">Unused layers</p>
+              <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ cache_count }}</p>
+            </div>
+            <div class="bg-teal-50 dark:bg-teal-900/20 rounded-lg border border-teal-100 dark:border-teal-800 px-4 py-3">
+              <p class="text-xs font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wide mb-1">Reclaimable</p>
+              <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{ cache_bytes_human }}</p>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-700 px-4 py-3 sm:col-span-1 col-span-2">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">What gets pruned</p>
+              <p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                All unused build-cache layers from previous <code class="bg-white dark:bg-gray-700 dark:text-gray-300 px-1 rounded text-xs">docker build</code> runs.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3-1.742 3H4.42c-1.53 0-2.493-1.667-1.743-3l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+            Pruning removes <strong>all unused build-cache layers at once</strong>. Future builds may be slower.
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+  {% endif %}
+
+  <!-- Confirmation modal -->
+  <div id="confirm-modal"
+       class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+       onclick="if(event.target===this) closeModal()">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md border border-gray-200 dark:border-gray-700">
+
+      <div class="px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-700 flex items-start gap-3">
+        <div class="shrink-0 flex items-center justify-center h-9 w-9 rounded-full bg-red-100 dark:bg-red-900/40">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-600 dark:text-red-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3-1.742 3H4.42c-1.53 0-2.493-1.667-1.743-3l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">Confirm deletion</h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            You are about to permanently delete
+            <strong id="modal-count" class="text-gray-900 dark:text-gray-100">0</strong> resource(s). This cannot be undone.
+          </p>
+        </div>
+      </div>
+
+      <div class="px-6 py-4 max-h-56 overflow-y-auto">
+        <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">Resources to delete</p>
+        <ul id="modal-item-list" class="space-y-1.5 text-sm text-gray-700 dark:text-gray-300"></ul>
+        <p id="modal-size-summary" class="text-xs text-amber-600 dark:text-amber-400 mt-3 font-medium"></p>
+      </div>
+
+      <div class="px-6 pb-6 flex justify-end gap-3">
+        <button type="button" onclick="closeModal()"
+                class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white
+                       border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500
+                       px-4 py-2 rounded-md transition-colors">
+          Cancel
+        </button>
+        <button type="button" onclick="submitCleanup()"
+                class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white
+                       text-sm font-medium px-4 py-2 rounded-md transition-colors">
+          Confirm deletion
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+{% endif %}
+
+<script>
+  function switchTab(name) {
+    ['plan','action'].forEach(t => {
+      const tab   = document.getElementById('tab-' + t);
+      const panel = document.getElementById('panel-' + t);
+      if (!tab || !panel) return;
+      const active = (t === name);
+      tab.classList.toggle('border-blue-600',    active);
+      tab.classList.toggle('text-blue-700',      active);
+      tab.classList.toggle('dark:text-blue-400', active);
+      tab.classList.toggle('border-transparent', !active);
+      tab.classList.toggle('text-gray-500',      !active);
+      panel.classList.toggle('hidden', !active);
+    });
+  }
+
+  function getChecked() { return Array.from(document.querySelectorAll('.item-checkbox:checked')); }
+
+  function onCheckboxChange() {
+    const checked = getChecked();
+    const total   = document.querySelectorAll('.item-checkbox').length;
+    const selAll  = document.getElementById('select-all');
+    if (selAll) {
+      selAll.indeterminate = checked.length > 0 && checked.length < total;
+      selAll.checked = checked.length === total;
+    }
+    const lbl = document.getElementById('selection-label');
+    if (lbl) lbl.textContent = checked.length === 0 ? '0 selected' : `${checked.length} of ${total} selected`;
+    const btn = document.getElementById('run-btn');
+    if (btn) btn.disabled = checked.length === 0;
+  }
+
+  function toggleAll(src) {
+    document.querySelectorAll('.item-checkbox').forEach(cb => { cb.checked = src.checked; });
+    onCheckboxChange();
+  }
+
+  function humanSize(b) {
+    if (b >= 1073741824) return (b/1073741824).toFixed(2) + ' GB';
+    if (b >= 1048576)    return (b/1048576).toFixed(1) + ' MB';
+    if (b >= 1024)       return Math.round(b/1024) + ' KB';
+    return b + ' B';
+  }
+
+  function openModal() {
+    const checked = getChecked();
+    if (!checked.length) return;
+    document.getElementById('modal-count').textContent = checked.length;
+    let total = 0;
+    const list = document.getElementById('modal-item-list');
+    list.innerHTML = '';
+    checked.forEach(cb => {
+      const row  = cb.closest('.item-row');
+      const name = row.dataset.name;
+      const size = parseInt(row.dataset.size, 10) || 0;
+      total += size;
+      const li = document.createElement('li');
+      li.className = 'flex items-center justify-between gap-2';
+      li.innerHTML = `<span class="font-mono text-xs truncate text-gray-800 dark:text-gray-200">${name}</span>
+                      <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">${size > 0 ? row.dataset.sizeHuman : '—'}</span>`;
+      list.appendChild(li);
+    });
+    const summary = document.getElementById('modal-size-summary');
+    summary.textContent = total > 0 ? `Total space to free: ${humanSize(total)}` : '';
+    document.getElementById('confirm-modal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal() {
+    document.getElementById('confirm-modal').classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  function submitCleanup() { document.getElementById('cleanup-form').submit(); }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+
+{% endblock %}

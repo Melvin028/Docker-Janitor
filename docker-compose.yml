@@ -1,0 +1,9 @@
+services:
+  janitor:
+    build: .
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./configs/janitor.yaml:/app/configs/janitor.yaml:ro
+    env_file:
+      - .env
+    network_mode: none

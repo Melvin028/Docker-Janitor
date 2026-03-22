@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %} — Policy{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Policy</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Active rules and deletion decisions from the last scan.</p>
+  </div>
+</div>
+
+{% if not result %}
+  <!-- No scan yet -->
+  <div class="flex flex-col items-center justify-center py-24 text-center">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M10 2a8 8 0 100 16A8 8 0 0010 2zm1 11H9v-2h2v2zm0-4H9V7h2v2z" clip-rule="evenodd"/>
+    </svg>
+    <h2 class="text-base font-medium text-gray-700 dark:text-gray-300 mb-1">No scan data yet</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Run a scan first to evaluate policy decisions.</p>
+    <form action="{{ url_for('main.do_scan') }}" method="post">
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white
+                     text-sm font-medium px-5 py-2 rounded-md transition-colors">
+        Run scan
+      </button>
+    </form>
+  </div>
+
+{% else %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Active rules panel -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 self-start">
+      <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Active rules</h2>
+
+      {% set policy = cfg.get('policy', {}) %}
+      <dl class="space-y-3 text-sm">
+
+        <div class="flex justify-between">
+          <dt class="text-gray-500 dark:text-gray-400">Retention</dt>
+          <dd class="font-medium text-gray-900 dark:text-gray-100">
+            {% if policy.get('retention_days') %}
+              {{ policy.retention_days }} days
+            {% else %}
+              <span class="text-gray-400">Not set</span>
+            {% endif %}
+          </dd>
+        </div>
+
+        <div class="flex justify-between">
+          <dt class="text-gray-500 dark:text-gray-400">Min versions</dt>
+          <dd class="font-medium text-gray-900 dark:text-gray-100">
+            {% if policy.get('min_versions') %}
+              Keep {{ policy.min_versions }} per repo
+            {% else %}
+              <span class="text-gray-400 dark:text-gray-500">Not set</span>
+            {% endif %}
+          </dd>
+        </div>
+
+        <div class="flex justify-between">
+          <dt class="text-gray-500 dark:text-gray-400">Protect running</dt>
+          <dd>
+            {% if policy.get('protect_running', true) %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">On</span>
+            {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">Off</span>
+            {% endif %}
+          </dd>
+        </div>
+
+        <div class="flex justify-between">
+          <dt class="text-gray-500 dark:text-gray-400">Protect named</dt>
+          <dd>
+            {% if policy.get('protect_named', true) %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">On</span>
+            {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">Off</span>
+            {% endif %}
+          </dd>
+        </div>
+
+        {% if policy.get('keep_patterns') %}
+          <div>
+            <dt class="text-gray-500 dark:text-gray-400 mb-1">Keep patterns</dt>
+            <dd class="flex flex-wrap gap-1">
+              {% for p in policy.keep_patterns %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-mono">
+                  {{ p }}
+                </span>
+              {% endfor %}
+            </dd>
+          </div>
+        {% else %}
+          <div class="flex justify-between">
+            <dt class="text-gray-500 dark:text-gray-400">Keep patterns</dt>
+            <dd class="text-gray-400 dark:text-gray-500 text-sm">None</dd>
+          </div>
+        {% endif %}
+
+      </dl>
+    </div>
+
+    <!-- Decisions table -->
+    <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Image decisions</h2>
+        {% if policy_result %}
+          {% set safe_count = policy_result.decisions | selectattr('safe_to_delete') | list | length %}
+          <span class="text-xs text-gray-500 dark:text-gray-400">
+            <span class="text-red-600 dark:text-red-400 font-semibold">{{ safe_count }}</span> flagged for removal
+            &nbsp;·&nbsp;
+            {{ policy_result.decisions | length - safe_count }} protected
+          </span>
+        {% endif %}
+      </div>
+
+      {% if policy_result and policy_result.decisions %}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide bg-gray-50 dark:bg-gray-700/50">
+                <th class="px-5 py-2.5 text-left font-medium">Image</th>
+                <th class="px-5 py-2.5 text-left font-medium">Decision</th>
+                <th class="px-5 py-2.5 text-left font-medium">Reason</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+              {% for d in policy_result.decisions %}
+                {% set img = result.images | selectattr('id', 'equalto', d.resource_id) | first %}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td class="px-5 py-3 text-gray-800 dark:text-gray-200 truncate max-w-[180px]" title="{{ img.display_name if img else d.resource_id }}">
+                    {{ img.display_name if img else d.resource_id[:12] }}
+                  </td>
+                  <td class="px-5 py-3">
+                    {% if d.safe_to_delete %}
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Remove</span>
+                    {% else %}
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Keep</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs">{{ d.reason }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="px-5 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
+          No decisions available. Run a scan to evaluate policy.
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+{% endif %}
+
+<script>localStorage.setItem('dj_visited_policy','1');</script>
+{% endblock %}

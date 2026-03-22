@@ -1,0 +1,941 @@
+{% extends "base.html" %}
+{% block title %} — Overview{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<style>
+  .widget-section { transition: box-shadow 0.15s; }
+  .sortable-ghost  { opacity: 0.4; }
+  .sortable-drag   { box-shadow: 0 8px 24px rgba(0,0,0,0.14); }
+  .drag-handle     { cursor: grab; }
+  .drag-handle:active { cursor: grabbing; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Overview</h1>
+    {% if result %}
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+        Last scan: {{ result.scanned_at.astimezone().strftime('%b %d, %Y at %I:%M %p').replace(' 0', ' ') }}
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+{% if not result %}
+  <div class="flex flex-col items-center justify-center py-24 text-center">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M22.3 9.8c-.4-.3-1.4-.4-2.1-.3-.1-.8-.5-1.5-1.1-2l-.4-.3-.3.4c-.4.5-.5 1.4-.5 2 0 .4.1.9.4 1.2-.3.2-.9.4-1.7.4H1c-.1 1.1.1 2.3.6 3.3.6 1.1 1.4 2 2.5 2.5 1.2.6 2.5.9 3.8.9 2.6 0 5-1.1 6.5-3 1-.1 3.1-.1 4.2-2.2.1-.1.3-.5.3-.5l-.6-.4zm-18.6-.2h2V7.7h-2v1.9zm2.5 0h2V7.7h-2v1.9zm2.5 0h2V7.7h-2v1.9zm2.5 0h2V7.7h-2v1.9zM6.2 7.2h2V5.3h-2v1.9zm2.5 0h2V5.3h-2v1.9zm2.5 0h2V5.3h-2v1.9zm2.5 2.4h2V7.7h-2v1.9z"/>
+    </svg>
+    <h2 class="text-base font-medium text-gray-700 dark:text-gray-300 mb-1">No scan data yet</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Run a scan to see your Docker resource usage.</p>
+    <form action="{{ url_for('main.do_scan') }}" method="post"
+          onsubmit="var b=this.querySelector('button'),i=b.querySelector('svg'),l=b.querySelector('span');i.classList.add('spinning');l.textContent='Scanning\u2026';b.disabled=true;b.classList.add('opacity-75','cursor-not-allowed');">
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white
+                     text-sm font-medium px-5 py-2 rounded-md transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+        </svg>
+        <span>Run scan</span>
+      </button>
+    </form>
+  </div>
+
+{% else %}
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Onboarding Checklist                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div id="onboarding-card"
+       class="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50
+              dark:from-blue-900/20 dark:to-indigo-900/20
+              border border-blue-200 dark:border-blue-800 rounded-xl overflow-hidden">
+    <div class="px-5 py-4 flex items-center justify-between cursor-pointer select-none"
+         onclick="toggleOnboarding()">
+      <div class="flex items-center gap-3">
+        <div class="h-7 w-7 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+          <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+                  d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">Getting started</p>
+          <p id="onboarding-sub" class="text-xs text-gray-500 dark:text-gray-400"></p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="event.stopPropagation();dismissOnboarding()"
+                class="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300
+                       px-2 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors">
+          Dismiss
+        </button>
+        <svg id="onboarding-chevron" class="h-4 w-4 text-gray-400 dark:text-gray-500 transition-transform"
+             fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </div>
+    </div>
+
+    <div id="onboarding-body" class="border-t border-blue-100 dark:border-blue-800/60 px-5 pb-4 pt-3">
+      {% set scan_done = result is not none %}
+      {% set steps = [
+        (true,      'Connect to Docker',          'Docker daemon is reachable and responding.'),
+        (scan_done, 'Run your first scan',         'Scan discovers all images, containers, volumes and networks.'),
+        (scan_done, 'Review cleanup recommendations', 'See what you can safely delete to free disk space.'),
+        (false,     'Set a cleanup policy',        'Define rules so Docker Janitor can automatically flag resources.'),
+      ] %}
+      <div class="space-y-2.5 mt-1" id="onboarding-steps">
+        {% for done, title, desc in steps %}
+        <div class="flex items-start gap-3 onboarding-step" data-done="{{ 'true' if done else 'false' }}">
+          <div class="h-5 w-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center
+                      {% if done %}bg-green-500{% else %}border-2 border-gray-300 dark:border-gray-600{% endif %}">
+            {% if done %}
+              <svg class="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+              </svg>
+            {% endif %}
+          </div>
+          <div class="flex-1">
+            <p class="text-xs font-semibold {{ 'text-gray-700 dark:text-gray-300' if done else 'text-gray-500 dark:text-gray-400' }}">
+              {{ title }}{% if not done %} <span class="font-normal text-gray-400 dark:text-gray-500">· pending</span>{% endif %}
+            </p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ desc }}</p>
+            {% if not done and loop.first %}{% endif %}
+            {% if not done and title == 'Run your first scan' %}
+              <form action="{{ url_for('main.do_scan') }}" method="post" class="mt-1.5">
+                <button type="submit"
+                        class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400
+                               hover:underline">
+                  Run scan now →
+                </button>
+              </form>
+            {% elif not done and title == 'Set a cleanup policy' %}
+              <a href="{{ url_for('main.policy') }}"
+                 class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400
+                        hover:underline mt-1.5">
+                Go to policy settings →
+              </a>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  {% set cards = [
+    {'label':'Images',     'href':url_for('main.images'),     'total':result.images|length,     'detail_count':result.unused_images|length,     'detail_label':'unused',   'color':'blue'},
+    {'label':'Containers', 'href':url_for('main.containers'), 'total':result.containers|length, 'detail_count':result.stopped_containers|length,'detail_label':'stopped',  'color':'violet'},
+    {'label':'Volumes',    'href':url_for('main.volumes'),    'total':result.volumes|length,    'detail_count':result.unused_volumes|length,    'detail_label':'orphaned', 'color':'amber'},
+    {'label':'Networks',   'href':url_for('main.networks'),   'total':result.networks|length,   'detail_count':result.unused_networks|length,   'detail_label':'unused',   'color':'teal'},
+  ] %}
+
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    {% for card in cards %}
+      {% set has_waste = card.detail_count > 0 %}
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700
+                  p-4 sm:p-5 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-sm transition-all">
+        <a href="{{ card.href }}" class="block">
+          <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">{{ card.label }}</p>
+          <p class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{{ card.total }}</p>
+        </a>
+        {% if has_waste %}
+          <a href="{{ card.href }}#{{ card.detail_label }}"
+             class="text-sm text-amber-600 dark:text-amber-400 font-medium hover:underline underline-offset-2">
+            {{ card.detail_count }} {{ card.detail_label }} &rarr;
+          </a>
+        {% else %}
+          <p class="text-sm text-gray-400 dark:text-gray-500">{{ card.detail_count }} {{ card.detail_label }}</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- ═══ Draggable widget container ════════════════════════════════ -->
+  <div id="widget-container">
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Smart Cleanup Recommendations                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  {% if recommendations %}
+  {% set total_rec_bytes = namespace(v=0) %}
+  {% for r in recommendations %}{% set total_rec_bytes.v = total_rec_bytes.v + r.bytes %}{% endfor %}
+  <div data-widget="recommendations" class="widget-section bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-blue-800 p-4 sm:p-5 mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div class="flex items-center gap-2.5">
+        <button class="drag-handle p-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded transition-colors" title="Drag to reorder">
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>
+        </button>
+        <div class="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
+          <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
+        </div>
+        <div>
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Smart cleanup recommendations</h2>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {% set total_gb = total_rec_bytes.v / (1024**3) %}
+            {% set total_mb = total_rec_bytes.v / (1024**2) %}
+            You can free up to
+            <span class="font-semibold text-blue-600 dark:text-blue-400">
+              {% if total_gb >= 1 %}{{ "%.2f"|format(total_gb) }} GB
+              {% else %}{{ "%.0f"|format(total_mb) }} MB{% endif %}
+            </span>
+            by completing {{ recommendations|length }} action{{ 's' if recommendations|length != 1 }}
+          </p>
+        </div>
+      </div>
+      <a href="{{ url_for('main.cleanup') }}"
+         class="shrink-0 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700
+                text-white text-xs font-medium px-3.5 py-2 rounded-md transition-colors">
+        Go to cleanup
+        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+        </svg>
+      </a>
+    </div>
+
+    <div class="space-y-2.5">
+      {% set type_meta = {
+        'dangling':     {'icon_bg': 'bg-red-100 dark:bg-red-900/30',    'icon_color': 'text-red-600 dark:text-red-400',    'badge': 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'},
+        'stale_images': {'icon_bg': 'bg-amber-100 dark:bg-amber-900/30','icon_color': 'text-amber-600 dark:text-amber-400','badge': 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'},
+        'containers':   {'icon_bg': 'bg-violet-100 dark:bg-violet-900/30','icon_color':'text-violet-600 dark:text-violet-400','badge':'bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'},
+        'volumes':      {'icon_bg': 'bg-orange-100 dark:bg-orange-900/30','icon_color':'text-orange-600 dark:text-orange-400','badge':'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800'},
+        'cache':        {'icon_bg': 'bg-teal-100 dark:bg-teal-900/30',  'icon_color': 'text-teal-600 dark:text-teal-400',  'badge': 'bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800'},
+      } %}
+
+      {% for rec in recommendations %}
+        {% set meta = type_meta.get(rec.type, type_meta['stale_images']) %}
+        <div class="flex items-center gap-3 rounded-lg border border-gray-100 dark:border-gray-700
+                    bg-gray-50 dark:bg-gray-700/50 px-4 py-3
+                    hover:border-blue-200 dark:hover:border-blue-700 hover:bg-blue-50/40 dark:hover:bg-blue-900/10
+                    transition-colors group">
+          <!-- Rank badge -->
+          <div class="shrink-0 flex items-center justify-center h-7 w-7
+                      rounded-full bg-gray-200 dark:bg-gray-600
+                      text-xs font-bold text-gray-600 dark:text-gray-300">
+            {{ loop.index }}
+          </div>
+
+          <!-- Text -->
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ rec.title }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{{ rec.description }}</p>
+          </div>
+
+          <!-- Savings badge -->
+          {% if rec.bytes_human %}
+            <span class="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full
+                         text-xs font-semibold border {{ meta.badge }}">
+              {{ rec.bytes_human }}
+            </span>
+          {% endif %}
+
+          <!-- Arrow -->
+          <a href="{{ url_for('main.cleanup') }}"
+             class="shrink-0 p-1.5 rounded-md text-gray-300 dark:text-gray-600
+                    group-hover:text-blue-500 dark:group-hover:text-blue-400
+                    hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+             title="Go to cleanup">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+            </svg>
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Reclaimable banner -->
+  {% set reclaimable_images = result.unused_images %}
+  {% if reclaimable_images %}
+    {% set total_bytes = namespace(value=0) %}
+    {% for img in reclaimable_images %}{% set total_bytes.value = total_bytes.value + img.size_bytes %}{% endfor %}
+    {% set gb = total_bytes.value / (1024 ** 3) %}
+    {% set mb = total_bytes.value / (1024 ** 2) %}
+    <div data-widget="reclaimable" class="widget-section mb-6">
+    <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700
+                rounded-xl px-4 sm:px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3-1.742 3H4.42c-1.53 0-2.493-1.667-1.743-3l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        <div>
+          <p class="text-sm font-medium text-amber-800 dark:text-amber-300">
+            {% if gb >= 1 %}{{ "%.2f"|format(gb) }} GB{% else %}{{ "%.0f"|format(mb) }} MB{% endif %} reclaimable
+          </p>
+          <p class="text-xs text-amber-600 dark:text-amber-400">
+            {{ reclaimable_images|length }} unused image{{ 's' if reclaimable_images|length != 1 }} can be removed
+          </p>
+        </div>
+      </div>
+      <a href="{{ url_for('main.images') }}"
+         class="text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 underline underline-offset-2">
+        View images
+      </a>
+    </div>
+    </div>{# /data-widget=reclaimable #}
+  {% endif %}
+
+  <!-- Disk usage breakdown -->
+  {% set du = result.disk_usage %}
+  <div data-widget="disk" class="widget-section bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div class="flex items-center gap-2">
+        <button class="drag-handle p-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded transition-colors" title="Drag to reorder">
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>
+        </button>
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Disk usage</h2>
+      </div>
+      <span class="text-xs text-gray-500 dark:text-gray-400">
+        Total: <span class="font-semibold text-gray-900 dark:text-gray-100">{{ du.total_human }}</span>
+        &nbsp;·&nbsp;
+        <span class="text-amber-600 dark:text-amber-400 font-medium">{{ du.total_reclaimable_human }} reclaimable</span>
+      </span>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {% set du_items = [
+        ('Images',      'blue',   du.images_human,      du.images_reclaimable_bytes,      du.images_reclaimable_human),
+        ('Containers',  'violet', du.containers_human,  du.containers_reclaimable_bytes,  du.containers_reclaimable_human),
+        ('Volumes',     'amber',  du.volumes_human,     du.volumes_reclaimable_bytes,     du.volumes_reclaimable_human),
+        ('Build cache', 'teal',   du.build_cache_human, du.build_cache_reclaimable_bytes, du.build_cache_reclaimable_human),
+      ] %}
+      {% for label, color, total, reclaim_bytes, reclaim_human in du_items %}
+        <div class="rounded-lg bg-{{ color }}-50 dark:bg-{{ color }}-900/20
+                    border border-{{ color }}-100 dark:border-{{ color }}-800 p-3 sm:p-4">
+          <p class="text-xs font-medium text-{{ color }}-600 dark:text-{{ color }}-400 uppercase tracking-wide mb-2">{{ label }}</p>
+          <p class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 tabular-nums">{{ total }}</p>
+          {% if reclaim_bytes > 0 %}
+            <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">{{ reclaim_human }} reclaimable</p>
+          {% else %}
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">None reclaimable</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Trend chart -->
+  {% if history|length >= 2 %}
+  <div data-widget="trend" class="widget-section bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div class="flex items-center gap-3">
+        <button class="drag-handle p-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded transition-colors" title="Drag to reorder">
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>
+        </button>
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Disk usage over time</h2>
+        {% if trend.direction == 'up' %}
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+            <svg class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+            {{ "%.1f"|format(trend.pct) }}% growing
+          </span>
+        {% elif trend.direction == 'down' %}
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+            <svg class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            {{ "%.1f"|format(trend.pct) }}% shrinking
+          </span>
+        {% else %}
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+            → Stable
+          </span>
+        {% endif %}
+      </div>
+      <span class="text-xs text-gray-400 dark:text-gray-500">Last {{ history|length }} scan{{ 's' if history|length != 1 }}</span>
+    </div>
+    <div class="relative h-48">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var raw = {{ history | tojson }};
+    var isDark = document.documentElement.classList.contains('dark');
+    var gridColor = isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6';
+    var tickColor = isDark ? '#6b7280' : '#9ca3af';
+
+    var labels = raw.map(function(e) {
+      var d = new Date(e.ts);
+      return d.toLocaleDateString(undefined, {month:'short',day:'numeric'})
+             + ' ' + d.toLocaleTimeString(undefined, {hour:'2-digit',minute:'2-digit'});
+    });
+    function toGb(b) { return +(b / (1024*1024*1024)).toFixed(3); }
+
+    new Chart(document.getElementById('trendChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label:'Images',      data:raw.map(e=>toGb(e.images_bytes||0)),      borderColor:'rgba(59,130,246,1)',  backgroundColor:'rgba(59,130,246,0.08)',  pointBackgroundColor:'rgba(59,130,246,1)',  pointRadius:4,pointHoverRadius:6,borderWidth:2,fill:true,tension:0.35 },
+          { label:'Build cache', data:raw.map(e=>toGb(e.build_cache_bytes||0)), borderColor:'rgba(20,184,166,1)',  backgroundColor:'rgba(20,184,166,0.08)',  pointBackgroundColor:'rgba(20,184,166,1)',  pointRadius:4,pointHoverRadius:6,borderWidth:2,fill:true,tension:0.35 },
+          { label:'Volumes',     data:raw.map(e=>toGb(e.volumes_bytes||0)),     borderColor:'rgba(245,158,11,1)', backgroundColor:'rgba(245,158,11,0.08)', pointBackgroundColor:'rgba(245,158,11,1)', pointRadius:4,pointHoverRadius:6,borderWidth:2,fill:true,tension:0.35 },
+          { label:'Containers',  data:raw.map(e=>toGb(e.containers_bytes||0)),  borderColor:'rgba(139,92,246,1)', backgroundColor:'rgba(139,92,246,0.08)', pointBackgroundColor:'rgba(139,92,246,1)', pointRadius:4,pointHoverRadius:6,borderWidth:2,fill:true,tension:0.35 },
+        ],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false, animation:{duration:600},
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{position:'bottom',labels:{boxWidth:12,padding:16,font:{size:11},usePointStyle:true,color:tickColor}},
+          tooltip:{callbacks:{label:function(ctx){return ' '+ctx.dataset.label+': '+ctx.parsed.y.toFixed(3)+' GB';}}}
+        },
+        scales:{
+          x:{ticks:{maxTicksLimit:8,font:{size:10},color:tickColor},grid:{color:gridColor}},
+          y:{beginAtZero:true,ticks:{font:{size:10},color:tickColor,callback:function(v){return v.toFixed(1)+' GB';}},grid:{color:gridColor}},
+        },
+      },
+    });
+  })();
+  </script>
+  {% endif %}
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Image Age Heatmap                                              -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  {% if heatmap_cells %}
+  <div data-widget="heatmap" class="widget-section bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div class="flex items-center gap-2">
+        <button class="drag-handle p-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded transition-colors" title="Drag to reorder">
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>
+        </button>
+        <svg class="h-4 w-4 text-blue-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
+        </svg>
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Image creation heatmap</h2>
+      </div>
+      <span class="text-xs text-gray-400 dark:text-gray-500">Last 52 weeks</span>
+    </div>
+
+    <div class="overflow-x-auto pb-1">
+      <div class="min-w-max">
+
+        {# Month labels — one label per column, only set at month boundaries #}
+        <div class="flex gap-1 mb-1">
+          {% for cell in heatmap_cells %}
+            <div class="w-4 shrink-0 text-center" style="font-size:9px;line-height:1.2;color:#9ca3af;">
+              {{ cell.month_label }}
+            </div>
+          {% endfor %}
+        </div>
+
+        {# Color levels: 0=empty … 4=peak #}
+        {% set lvl = [
+          'bg-gray-100 dark:bg-gray-700',
+          'bg-blue-200 dark:bg-blue-900',
+          'bg-blue-400 dark:bg-blue-600',
+          'bg-blue-600 dark:bg-blue-500',
+          'bg-blue-800 dark:bg-blue-300',
+        ] %}
+
+        {# Week cells — clickable if the week has images #}
+        <div class="flex gap-1" id="heatmap-grid">
+          {% for cell in heatmap_cells %}
+            {% if cell.count > 0 %}
+              <div class="w-4 h-4 rounded-sm shrink-0 cursor-pointer
+                          hover:ring-2 hover:ring-blue-400 hover:ring-offset-1
+                          dark:hover:ring-offset-gray-800 transition-all {{ lvl[cell.level] }}"
+                   title="{{ cell.label }}: {{ cell.count }} image{{ 's' if cell.count != 1 }} — click to view"
+                   data-week="{{ cell.week }}"
+                   onclick="openHeatmapModal(this)">
+              </div>
+            {% else %}
+              <div class="w-4 h-4 rounded-sm shrink-0 cursor-default {{ lvl[cell.level] }}"
+                   title="{{ cell.label }}: No images">
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        {# Embed per-week image data as JSON for JS click handler #}
+        <script id="heatmap-data" type="application/json">
+          {{ heatmap_cells | tojson }}
+        </script>
+
+        {# Legend #}
+        <div class="flex items-center gap-1.5 mt-3">
+          <span style="font-size:10px;color:#9ca3af;">Less</span>
+          {% for cls in lvl %}
+            <div class="w-3 h-3 rounded-sm {{ cls }}"></div>
+          {% endfor %}
+          <span style="font-size:10px;color:#9ca3af;">More</span>
+        </div>
+
+      </div>
+    </div>
+
+    {# Stats row #}
+    {% set active_weeks = heatmap_cells | selectattr('count', '>', 0) | list %}
+    {% set peak = heatmap_cells | sort(attribute='count', reverse=true) | first %}
+    {% if peak.count > 0 %}
+      <div class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700
+                  flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+        <span>
+          <strong class="text-gray-700 dark:text-gray-300">{{ active_weeks | length }}</strong>
+          active week{{ 's' if active_weeks | length != 1 }} of 52
+        </span>
+        <span>
+          Peak: <strong class="text-gray-700 dark:text-gray-300">{{ peak.count }}
+          image{{ 's' if peak.count != 1 }}</strong> — {{ peak.label }}
+        </span>
+        <span>
+          Total: <strong class="text-gray-700 dark:text-gray-300">{{ result.images | length }}</strong>
+          image{{ 's' if result.images | length != 1 }}
+        </span>
+        <span class="text-blue-500 dark:text-blue-400">
+          ↑ Click any colored cell to see images from that week
+        </span>
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ── Heatmap week-images modal ────────────────────────────────────── -->
+  <div id="heatmap-modal"
+       class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-4 sm:pb-0"
+       onclick="if(event.target===this)closeHeatmapModal()">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl
+                border border-gray-200 dark:border-gray-700
+                flex flex-col max-h-[80vh]">
+
+      <!-- Modal header -->
+      <div class="flex items-center justify-between px-5 py-4
+                  border-b border-gray-100 dark:border-gray-700 shrink-0">
+        <div>
+          <h3 id="heatmap-modal-title"
+              class="text-sm font-semibold text-gray-900 dark:text-gray-100"></h3>
+          <p id="heatmap-modal-sub"
+             class="text-xs text-gray-400 dark:text-gray-500 mt-0.5"></p>
+        </div>
+        <button onclick="closeHeatmapModal()"
+                class="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200
+                       p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Image list -->
+      <div class="overflow-y-auto flex-1">
+        <table class="w-full text-sm" id="heatmap-modal-table">
+          <thead class="sticky top-0">
+            <tr class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide
+                       bg-gray-50 dark:bg-gray-700/80 border-b border-gray-100 dark:border-gray-700">
+              <th class="px-5 py-2.5 text-left font-medium">Image</th>
+              <th class="px-5 py-2.5 text-right font-medium">Size</th>
+              <th class="px-5 py-2.5 text-center font-medium">Status</th>
+              <th class="px-5 py-2.5 text-right font-medium">Created</th>
+            </tr>
+          </thead>
+          <tbody id="heatmap-modal-body"
+                 class="divide-y divide-gray-100 dark:divide-gray-700">
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-5 py-3 border-t border-gray-100 dark:border-gray-700
+                  flex justify-end shrink-0">
+        <a href="{{ url_for('main.images') }}"
+           class="inline-flex items-center gap-1.5 text-xs font-medium
+                  text-blue-600 dark:text-blue-400 hover:underline">
+          View all images →
+        </a>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    /* Build week → images lookup from the embedded JSON */
+    var _heatmapData = JSON.parse(
+      document.getElementById('heatmap-data') ? document.getElementById('heatmap-data').textContent : '[]'
+    );
+    var _weekMap = {};
+    _heatmapData.forEach(function (cell) {
+      if (cell.images && cell.images.length) {
+        _weekMap[cell.week] = cell;
+      }
+    });
+
+    function statusBadge(img) {
+      if (img.is_dangling)
+        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Dangling</span>';
+      if (img.in_use)
+        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">In use</span>';
+      return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Unused</span>';
+    }
+
+    function escHtml(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function humanBytes(b) {
+      if (b >= 1073741824) return (b/1073741824).toFixed(2) + ' GB';
+      if (b >= 1048576)    return (b/1048576).toFixed(2) + ' MB';
+      return (b/1024).toFixed(0) + ' KB';
+    }
+
+    window.openHeatmapModal = function (el) {
+      var week = el.dataset.week;
+      var cell = _weekMap[week];
+      if (!cell) return;
+
+      document.getElementById('heatmap-modal-title').textContent =
+        'Week of ' + cell.label;
+      document.getElementById('heatmap-modal-sub').textContent =
+        cell.count + ' image' + (cell.count !== 1 ? 's' : '') + ' created this week';
+
+      var tbody = document.getElementById('heatmap-modal-body');
+      tbody.innerHTML = '';
+
+      var sorted = cell.images.slice().sort(function (a, b) { return b.size_bytes - a.size_bytes; });
+      sorted.forEach(function (img) {
+        var tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700/50';
+        tr.innerHTML =
+          '<td class="px-5 py-3 max-w-xs">' +
+            '<div class="font-medium text-gray-800 dark:text-gray-200 truncate" title="' + escHtml(img.display_name) + '">' +
+              escHtml(img.display_name) +
+            '</div>' +
+            (img.tags.length > 1
+              ? '<div class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">+' +
+                  (img.tags.length - 1) + ' more tag' + (img.tags.length > 2 ? 's' : '') +
+                '</div>'
+              : '') +
+          '</td>' +
+          '<td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums whitespace-nowrap">' +
+            escHtml(img.size_human) +
+          '</td>' +
+          '<td class="px-5 py-3 text-center">' + statusBadge(img) + '</td>' +
+          '<td class="px-5 py-3 text-right text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">' +
+            escHtml(img.created_fmt) +
+          '</td>';
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('heatmap-modal').classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    };
+
+    window.closeHeatmapModal = function () {
+      document.getElementById('heatmap-modal').classList.add('hidden');
+      document.body.style.overflow = '';
+    };
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeHeatmapModal();
+    });
+  })();
+  </script>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Duplicate Image Detector                                        -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  {% if duplicate_groups %}
+  <div data-widget="duplicates" class="widget-section bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
+
+    <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700
+                flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <button class="drag-handle p-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded transition-colors" title="Drag to reorder">
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>
+        </button>
+        <svg class="h-4 w-4 text-amber-500 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"/>
+          <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z"/>
+        </svg>
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Duplicate images</h2>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                     bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+          {{ duplicate_groups | length }} image{{ 's' if duplicate_groups | length != 1 }} with multiple tags
+        </span>
+      </div>
+      <a href="{{ url_for('main.images') }}"
+         class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+        View all images
+      </a>
+    </div>
+
+    {# Explanation banner #}
+    <div class="px-5 py-3 bg-blue-50 dark:bg-blue-900/20
+                border-b border-blue-100 dark:border-blue-800/50
+                flex items-start gap-2 text-xs text-blue-700 dark:text-blue-300">
+      <svg class="h-4 w-4 text-blue-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+      </svg>
+      <p>
+        Multiple tag names point to the <strong>same image SHA</strong> — the image is stored
+        <strong>once</strong> on disk. Extra tags are just aliases. Removing a tag does not
+        delete the image unless <em>all</em> tags are removed.
+      </p>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide
+                     bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
+            <th class="px-5 py-2.5 text-left font-medium">Image ID</th>
+            <th class="px-5 py-2.5 text-right font-medium">Size</th>
+            <th class="px-5 py-2.5 text-left font-medium">Tags (aliases)</th>
+            <th class="px-5 py-2.5 text-center font-medium">Aliases</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+          {% for img in duplicate_groups | sort(attribute='size_bytes', reverse=true) %}
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+
+              <td class="px-5 py-3">
+                <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ img.short_id }}</span>
+              </td>
+
+              <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums whitespace-nowrap">
+                {{ img.size_human }}
+              </td>
+
+              <td class="px-5 py-3">
+                <div class="flex flex-wrap gap-1">
+                  {% for tag in img.tags %}
+                    {% if loop.first %}
+                      {# primary tag #}
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
+                                   bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300
+                                   border border-blue-200 dark:border-blue-700">
+                        <span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+                        {{ tag }}
+                      </span>
+                    {% else %}
+                      {# alias tags #}
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                                   bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300
+                                   border border-gray-200 dark:border-gray-600">
+                        {{ tag }}
+                      </span>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </td>
+
+              <td class="px-5 py-3 text-center">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                             bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                  {{ img.tags | length }} tags
+                </span>
+              </td>
+
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="px-5 py-3 border-t border-gray-100 dark:border-gray-700
+                flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+      <span>
+        {% set total_alias_tags = namespace(value=0) %}
+        {% for img in duplicate_groups %}{% set total_alias_tags.value = total_alias_tags.value + img.tags | length - 1 %}{% endfor %}
+        {{ total_alias_tags.value }} redundant alias tag{{ 's' if total_alias_tags.value != 1 }} across {{ duplicate_groups | length }} image{{ 's' if duplicate_groups | length != 1 }}
+      </span>
+      <span class="text-green-600 dark:text-green-400 font-medium">
+        ✓ No extra disk space used — all aliases share the same layers
+      </span>
+    </div>
+
+  </div>
+  {% endif %}
+
+  <!-- Quick tables -->
+  <div data-widget="tables" class="widget-section mb-6">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- Largest images -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Largest images</h2>
+        <a href="{{ url_for('main.images') }}" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">View all</a>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide bg-gray-50 dark:bg-gray-700/50">
+              <th class="px-5 py-2.5 text-left font-medium">Name</th>
+              <th class="px-5 py-2.5 text-right font-medium">Size</th>
+              <th class="px-5 py-2.5 text-right font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            {% for img in result.images|sort(attribute='size_bytes',reverse=true)|list %}
+              {% if loop.index <= 5 %}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td class="px-5 py-3 text-gray-800 dark:text-gray-200 truncate max-w-[180px]" title="{{ img.display_name }}">{{ img.display_name }}</td>
+                  <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums">{{ img.size_human }}</td>
+                  <td class="px-5 py-3 text-right">
+                    {% if img.is_dangling %}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Dangling</span>
+                    {% elif img.in_use %}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">In use</span>
+                    {% else %}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Unused</span>{% endif %}
+                  </td>
+                </tr>
+              {% endif %}
+            {% else %}
+              <tr><td colspan="3" class="px-5 py-4 text-sm text-gray-400 dark:text-gray-500 text-center">No images found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Containers -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Containers</h2>
+        <a href="{{ url_for('main.containers') }}" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">View all</a>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide bg-gray-50 dark:bg-gray-700/50">
+              <th class="px-5 py-2.5 text-left font-medium">Name</th>
+              <th class="px-5 py-2.5 text-left font-medium hidden sm:table-cell">Image</th>
+              <th class="px-5 py-2.5 text-right font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            {% for c in result.containers|list %}
+              {% if loop.index <= 5 %}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td class="px-5 py-3 text-gray-800 dark:text-gray-200 truncate max-w-[140px]" title="{{ c.name }}">{{ c.name }}</td>
+                  <td class="px-5 py-3 text-gray-500 dark:text-gray-400 truncate max-w-[140px] hidden sm:table-cell" title="{{ c.image_name }}">{{ c.image_name }}</td>
+                  <td class="px-5 py-3 text-right">
+                    {% if c.status == 'running' %}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Running</span>
+                    {% elif c.status == 'paused' %}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">Paused</span>
+                    {% else %}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{{ c.status|capitalize }}</span>{% endif %}
+                  </td>
+                </tr>
+              {% endif %}
+            {% else %}
+              <tr><td colspan="3" class="px-5 py-4 text-sm text-gray-400 dark:text-gray-500 text-center">No containers found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>{# /grid tables #}
+  </div>{# /data-widget=tables #}
+
+  </div>{# /widget-container #}
+{% endif %}
+
+<!-- ── Heatmap modal (outside widget-container so it's not sortable) ── -->
+
+<!-- ── Dashboard scripts: SortableJS widget ordering + onboarding ──── -->
+<script>
+/* ── Widget drag-and-drop ─────────────────────────────────────────── */
+(function () {
+  var container = document.getElementById('widget-container');
+  if (!container || typeof Sortable === 'undefined') return;
+
+  var DEFAULT_ORDER = ['recommendations','reclaimable','disk','trend','heatmap','duplicates','tables'];
+
+  function saveOrder() {
+    var ids = Array.from(container.children)
+      .map(function(el){ return el.dataset.widget; })
+      .filter(Boolean);
+    localStorage.setItem('dj_widget_order', JSON.stringify(ids));
+  }
+
+  function restoreOrder() {
+    var saved = JSON.parse(localStorage.getItem('dj_widget_order') || 'null');
+    if (!saved) return;
+    var order = saved.concat(DEFAULT_ORDER.filter(function(id){ return saved.indexOf(id) < 0; }));
+    order.forEach(function(id) {
+      var el = container.querySelector('[data-widget="' + id + '"]');
+      if (el) container.appendChild(el);
+    });
+  }
+
+  restoreOrder();
+
+  Sortable.create(container, {
+    handle:       '.drag-handle',
+    animation:    160,
+    ghostClass:   'sortable-ghost',
+    dragClass:    'sortable-drag',
+    onEnd:        saveOrder,
+  });
+})();
+
+/* ── Onboarding checklist ─────────────────────────────────────────── */
+(function () {
+  var card = document.getElementById('onboarding-card');
+  if (!card) return;
+
+  /* Count completed steps from server-rendered HTML */
+  var steps    = card.querySelectorAll('.onboarding-step');
+  var doneCount = 0;
+  steps.forEach(function(s){ if (s.dataset.done === 'true') doneCount++; });
+  var subEl = document.getElementById('onboarding-sub');
+  if (subEl) subEl.textContent = doneCount + ' of ' + steps.length + ' steps complete';
+
+  /* Mark policy step done if user visited policy page */
+  if (localStorage.getItem('dj_visited_policy')) {
+    steps.forEach(function(s) {
+      var title = s.querySelector('p');
+      if (title && title.textContent.includes('policy')) {
+        s.dataset.done = 'true';
+        var circle = s.querySelector('div');
+        if (circle) {
+          circle.className = 'h-5 w-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center bg-green-500';
+          circle.innerHTML = '<svg class="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>';
+        }
+      }
+    });
+    doneCount = card.querySelectorAll('[data-done="true"]').length;
+    if (subEl) subEl.textContent = doneCount + ' of ' + steps.length + ' steps complete';
+  }
+
+  /* Hide if dismissed */
+  if (localStorage.getItem('dj_onboarding_dismissed') === '1') {
+    card.style.display = 'none';
+    return;
+  }
+
+  /* Auto-hide if ALL steps done */
+  if (doneCount >= steps.length) {
+    card.style.display = 'none';
+    return;
+  }
+
+  /* Collapse/expand */
+  var body    = document.getElementById('onboarding-body');
+  var chevron = document.getElementById('onboarding-chevron');
+  var open    = localStorage.getItem('dj_onboarding_open') !== '0';
+  body.style.display = open ? '' : 'none';
+  chevron.style.transform = open ? '' : 'rotate(-90deg)';
+
+  window.toggleOnboarding = function() {
+    open = !open;
+    body.style.display = open ? '' : 'none';
+    chevron.style.transform = open ? '' : 'rotate(-90deg)';
+    localStorage.setItem('dj_onboarding_open', open ? '1' : '0');
+  };
+  window.dismissOnboarding = function() {
+    localStorage.setItem('dj_onboarding_dismissed', '1');
+    card.style.display = 'none';
+  };
+})();
+</script>
+
+{% endblock %}

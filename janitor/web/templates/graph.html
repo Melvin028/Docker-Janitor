@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %} — Dependency graph{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Dependency graph</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+      Which containers are using which images
+    </p>
+  </div>
+  {% if result %}
+    <div class="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+      <span>{{ result.images|length }} images</span>
+      <span class="text-gray-200 dark:text-gray-700">·</span>
+      <span>{{ result.containers|length }} containers</span>
+    </div>
+  {% endif %}
+</div>
+
+{% if not result %}
+  <!-- ── No scan ────────────────────────────────────────────────────────── -->
+  <div class="flex flex-col items-center justify-center py-24 text-center
+              bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+    <svg class="h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/>
+    </svg>
+    <h2 class="text-base font-medium text-gray-700 dark:text-gray-300 mb-1">No scan data yet</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Run a scan first to see dependencies.</p>
+    <form action="{{ url_for('main.do_scan') }}" method="post">
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white
+                     text-sm font-medium px-5 py-2 rounded-md transition-colors">
+        Run scan
+      </button>
+    </form>
+  </div>
+
+{% elif not groups %}
+  <!-- ── No connections ─────────────────────────────────────────────────── -->
+  <div class="flex flex-col items-center justify-center py-20 text-center
+              bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+    <svg class="h-10 w-10 text-gray-300 dark:text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No active dependencies found</p>
+    <p class="text-xs text-gray-500 dark:text-gray-400">No containers are currently referencing any scanned image.</p>
+  </div>
+
+{% else %}
+  <!-- ── Stats row ──────────────────────────────────────────────────────── -->
+  {% set running_c  = result.containers | selectattr('status', 'equalto', 'running') | list %}
+  {% set stopped_c  = result.stopped_containers %}
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+    {% for label, val, sub, dot_color in [
+      ('Images in use',      groups|length,          'have containers',   'bg-blue-500'),
+      ('Unused images',      hidden_unused,           'not shown',         'bg-gray-400'),
+      ('Running containers', running_c|length,        'active',            'bg-green-500'),
+      ('Stopped containers', stopped_c|length,        'exited',            'bg-amber-500'),
+    ] %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="h-2 w-2 rounded-full {{ dot_color }} shrink-0"></span>
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ label }}</p>
+      </div>
+      <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ val }}</p>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{{ sub }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ── Hidden-image notices ───────────────────────────────────────────── -->
+  {% if hidden_unused > 0 or hidden_dangling > 0 %}
+  <div class="flex flex-wrap items-center gap-2 mb-5 text-xs text-gray-500 dark:text-gray-400">
+    <span>Not shown (no containers):</span>
+    {% if hidden_unused > 0 %}
+      <a href="{{ url_for('main.images') }}"
+         class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-medium
+                bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300
+                border border-gray-200 dark:border-gray-600 hover:border-gray-400 transition-colors">
+        {{ hidden_unused }} unused image{{ 's' if hidden_unused != 1 }} →
+      </a>
+    {% endif %}
+    {% if hidden_dangling > 0 %}
+      <a href="{{ url_for('main.images') }}"
+         class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-medium
+                bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400
+                border border-red-200 dark:border-red-800 hover:border-red-400 transition-colors">
+        {{ hidden_dangling }} dangling image{{ 's' if hidden_dangling != 1 }} →
+      </a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ── Legend ─────────────────────────────────────────────────────────── -->
+  <div class="flex flex-wrap items-center gap-4 mb-5 text-xs text-gray-500 dark:text-gray-400">
+    <span class="font-semibold uppercase tracking-wide text-[10px]">Legend</span>
+    <span class="flex items-center gap-1.5">
+      <span class="h-3 w-3 rounded-sm border-2 border-blue-400 bg-blue-50 dark:bg-blue-900/30"></span>
+      Image (in use)
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="h-2.5 w-2.5 rounded-full bg-green-400"></span>
+      Container running
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="h-2.5 w-2.5 rounded-full bg-amber-400"></span>
+      Container stopped
+    </span>
+  </div>
+
+  <!-- ── Search ─────────────────────────────────────────────────────────── -->
+  <div class="mb-5">
+    <input id="dep-search"
+           type="text"
+           placeholder="Filter by image or container name…"
+           oninput="filterGroups(this.value)"
+           class="w-full sm:max-w-sm text-sm rounded-lg border border-gray-200 dark:border-gray-600
+                  bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100
+                  px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400
+                  placeholder-gray-400 dark:placeholder-gray-500"/>
+  </div>
+
+  <!-- ── Dependency cards ───────────────────────────────────────────────── -->
+  <div id="dep-cards" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for g in groups %}
+    {% set img = g.image %}
+    {% set ctrs = g.containers %}
+    <div class="dep-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700
+                hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-sm
+                transition-all overflow-hidden"
+         data-image="{{ img.display_name | lower }}"
+         data-containers="{{ ctrs | map(attribute='name') | join(' ') | lower }}">
+
+      <!-- Image header -->
+      <div class="px-4 pt-4 pb-3 border-b border-gray-100 dark:border-gray-700
+                  bg-blue-50/60 dark:bg-blue-900/10">
+        <div class="flex items-start gap-3">
+          <!-- Docker icon -->
+          <div class="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center
+                      justify-center shrink-0 mt-0.5">
+            <svg class="h-4 w-4 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.185.185.186m-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.185.185.186m-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.185.186.186m5.893 2.715h2.118a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185m-2.93 0h2.12a.185.185 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185m-2.964 0h2.119a.185.185 0 00.185-.185V9.006a.185.185 0 00-.184-.186h-2.12a.186.186 0 00-.186.185v1.888c0 .102.084.185.186.185m-2.92 0h2.12a.186.186 0 00.184-.185V9.006a.185.185 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.082.185.184.185M23.763 9.89c-.065-.051-.672-.51-1.954-.51-.338.001-.676.03-1.01.09-.248-1.7-1.653-2.53-1.716-2.566l-.344-.199-.226.327c-.284.438-.49.922-.612 1.43-.23.97-.09 1.882.403 2.661-.595.332-1.55.413-1.744.42H.751a.751.751 0 00-.75.748 11.376 11.376 0 00.692 4.062c.545 1.428 1.355 2.48 2.41 3.124 1.18.723 3.1 1.137 5.275 1.137.983.003 1.963-.086 2.93-.266a12.248 12.248 0 003.823-1.389c.98-.567 1.86-1.288 2.61-2.136 1.252-1.418 1.998-2.997 2.553-4.4h.221c1.372 0 2.215-.549 2.68-1.009.309-.293.55-.65.707-1.046l.098-.288z"/>
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all leading-tight">
+              {{ img.display_name }}
+            </p>
+            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+              <span class="font-mono text-[10px] text-gray-400 dark:text-gray-500">{{ img.short_id }}</span>
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold
+                           bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                {{ img.size_human }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Containers list -->
+      <div class="px-4 py-3 space-y-2">
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">
+          {{ ctrs|length }} container{{ 's' if ctrs|length != 1 }}
+        </p>
+        {% for c in ctrs %}
+        <div class="flex items-center gap-2.5 rounded-lg px-3 py-2
+                    {% if c.status == 'running' %}
+                      bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/40
+                    {% else %}
+                      bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/40
+                    {% endif %}">
+          <!-- Status dot -->
+          <span class="h-2 w-2 rounded-full shrink-0
+                       {% if c.status == 'running' %}bg-green-500{% else %}bg-amber-400{% endif %}"></span>
+          <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate flex-1">
+            {{ c.name }}
+          </span>
+          <span class="text-[10px] font-medium shrink-0
+                       {% if c.status == 'running' %}text-green-600 dark:text-green-400
+                       {% else %}text-amber-600 dark:text-amber-400{% endif %}">
+            {{ c.status | capitalize }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Empty search state -->
+  <div id="dep-empty" class="hidden text-center py-16 text-gray-400 dark:text-gray-500 text-sm">
+    No images or containers match your search.
+  </div>
+
+{% endif %}
+
+<script>
+function filterGroups(q) {
+  q = (q || '').toLowerCase().trim();
+  var cards  = document.querySelectorAll('.dep-card');
+  var shown  = 0;
+  cards.forEach(function (card) {
+    var img  = card.dataset.image       || '';
+    var ctrs = card.dataset.containers  || '';
+    var hit  = !q || img.includes(q) || ctrs.includes(q);
+    card.style.display = hit ? '' : 'none';
+    if (hit) shown++;
+  });
+  document.getElementById('dep-empty').classList.toggle('hidden', shown > 0);
+}
+</script>
+
+{% endblock %}

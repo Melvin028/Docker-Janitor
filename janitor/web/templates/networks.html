@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %} — Networks{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Networks</h1>
+    {% if result %}
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+        {{ result.networks | length }} total &middot;
+        {{ result.networks | selectattr('in_use') | list | length }} in use &middot;
+        {{ result.unused_networks | length }} unused
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+{% if not result %}
+  <div class="flex flex-col items-center justify-center py-24 text-center">
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">No scan data yet.</p>
+    <form action="{{ url_for('main.do_scan') }}" method="post"
+          onsubmit="var b=this.querySelector('button'),i=b.querySelector('svg'),l=b.querySelector('span');i.classList.add('spinning');l.textContent='Scanning\u2026';b.disabled=true;b.classList.add('opacity-75','cursor-not-allowed');">
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2 rounded-md transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+        </svg>
+        <span>Run scan</span>
+      </button>
+    </form>
+  </div>
+
+{% elif not result.networks %}
+  <div class="flex flex-col items-center justify-center py-24 text-center">
+    <p class="text-sm text-gray-500 dark:text-gray-400">No networks found on this Docker host.</p>
+  </div>
+
+{% else %}
+
+  <!-- Toolbar: filter pills + search -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div class="flex flex-wrap gap-2">
+      <button onclick="setFilter('all')" data-filter="all"
+              class="filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                     ring-2 ring-offset-1 ring-gray-400 bg-gray-100 text-gray-700 cursor-pointer">
+        All &nbsp;<span class="font-semibold">{{ result.networks | length }}</span>
+      </button>
+      <button onclick="setFilter('in-use')" data-filter="in-use"
+              class="filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                     bg-green-100 text-green-700 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-green-400">
+        <span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
+        {{ result.networks | selectattr('in_use') | list | length }} in use
+      </button>
+      <button onclick="setFilter('unused')" data-filter="unused"
+              class="filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                     bg-amber-100 text-amber-700 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-amber-400">
+        <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+        {{ result.unused_networks | length }} unused
+      </button>
+      <button onclick="setFilter('system')" data-filter="system"
+              class="filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                     bg-gray-100 text-gray-500 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300">
+        <span class="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
+        System
+      </button>
+    </div>
+
+    <!-- Search -->
+    <div class="relative">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+      </svg>
+      <input id="search-input" type="text" placeholder="Search networks…"
+             oninput="applyAll()"
+             class="pl-8 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600
+                    text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700
+                    placeholder-gray-400 dark:placeholder-gray-500
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-52" />
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+          <th class="px-5 py-3 text-left font-medium cursor-pointer select-none hover:text-gray-800 dark:hover:text-gray-200"
+              onclick="sortBy('name')">
+            Name <span id="sort-arrow-name" class="text-blue-500"></span>
+          </th>
+          <th class="px-5 py-3 text-left font-medium hidden md:table-cell">ID</th>
+          <th class="px-5 py-3 text-left font-medium hidden sm:table-cell cursor-pointer select-none hover:text-gray-800 dark:hover:text-gray-200"
+              onclick="sortBy('driver')">
+            Driver <span id="sort-arrow-driver" class="text-blue-500"></span>
+          </th>
+          <th class="px-5 py-3 text-right font-medium hidden lg:table-cell">Scope</th>
+          <th class="px-5 py-3 text-right font-medium hidden lg:table-cell">Internal</th>
+          <th class="px-5 py-3 text-right font-medium">Status</th>
+          <th class="px-5 py-3 w-10"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 dark:divide-gray-700" id="networks-tbody">
+
+        {% for n in result.networks | sort(attribute='in_use', reverse=true) %}
+          {% if n.in_use %}{% set net_status = 'in-use' %}
+          {% elif n.name in ('bridge', 'host', 'none') %}{% set net_status = 'system' %}
+          {% else %}{% set net_status = 'unused' %}{% endif %}
+
+          {% set net_data = {
+            "id": n.id,
+            "short_id": n.short_id,
+            "name": n.name,
+            "driver": n.driver,
+            "scope": n.scope,
+            "in_use": n.in_use,
+            "internal": n.internal,
+            "labels": n.labels,
+            "status": net_status
+          } %}
+
+          <tr class="network-row hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-colors"
+              data-status="{{ net_status }}"
+              data-name="{{ n.name | lower }}"
+              data-driver="{{ n.driver | lower }}"
+              data-net='{{ net_data | tojson }}'
+              onclick="openDrawer(this)">
+
+            <td class="px-5 py-3">
+              <div class="font-medium text-gray-800 truncate max-w-[180px]" title="{{ n.name }}">{{ n.name }}</div>
+            </td>
+
+            <td class="px-5 py-3 hidden md:table-cell">
+              <span class="font-mono text-xs text-gray-400">{{ n.short_id }}</span>
+            </td>
+
+            <td class="px-5 py-3 hidden sm:table-cell text-gray-500">{{ n.driver }}</td>
+
+            <td class="px-5 py-3 text-right text-gray-500 hidden lg:table-cell">{{ n.scope }}</td>
+
+            <td class="px-5 py-3 text-right hidden lg:table-cell">
+              {% if n.internal %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Internal</span>
+              {% else %}
+                <span class="text-gray-400 text-xs">—</span>
+              {% endif %}
+            </td>
+
+            <td class="px-5 py-3 text-right">
+              {% if n.in_use %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">In use</span>
+              {% elif n.name in ('bridge', 'host', 'none') %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">System</span>
+              {% else %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Unused</span>
+              {% endif %}
+            </td>
+
+            <td class="px-5 py-3 text-right text-gray-300">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+              </svg>
+            </td>
+
+          </tr>
+        {% endfor %}
+
+        <tr id="no-results-row" class="hidden">
+          <td colspan="7" class="px-5 py-10 text-center text-sm text-gray-400 dark:text-gray-500">No networks match this filter.</td>
+        </tr>
+      </tbody>
+    </table>
+    </div><!-- /overflow-x-auto -->
+  </div>
+
+  <script>
+    const ACTIVE = {
+      all:      ['ring-2','ring-offset-1','ring-gray-400', 'bg-gray-100','text-gray-700'],
+      'in-use': ['ring-2','ring-offset-1','ring-green-400','bg-green-100','text-green-700'],
+      unused:   ['ring-2','ring-offset-1','ring-amber-400','bg-amber-100','text-amber-700'],
+      system:   ['ring-2','ring-offset-1','ring-gray-300', 'bg-gray-100','text-gray-500'],
+    };
+
+    let activeFilter = 'all';
+    let sortCol = null, sortDir = 1;
+
+    function setFilter(filter) {
+      activeFilter = filter;
+      document.querySelectorAll('.filter-pill').forEach(pill => {
+        const f = pill.dataset.filter;
+        (ACTIVE[f] || []).forEach(c => pill.classList.remove(c));
+        if (f === filter) (ACTIVE[f] || []).forEach(c => pill.classList.add(c));
+      });
+      applyAll();
+      history.replaceState(null, '', filter === 'all' ? location.pathname : '#' + filter);
+    }
+
+    function applyAll() {
+      const q = document.getElementById('search-input').value.toLowerCase().trim();
+      const rows = document.querySelectorAll('.network-row');
+      let visible = 0;
+      rows.forEach(row => {
+        const statusOk = activeFilter === 'all' || row.dataset.status === activeFilter;
+        const searchOk = !q || row.dataset.name.includes(q) || row.dataset.driver.includes(q);
+        const show = statusOk && searchOk;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      document.getElementById('no-results-row').classList.toggle('hidden', visible > 0);
+    }
+
+    function sortBy(col) {
+      if (sortCol === col) sortDir *= -1;
+      else { sortCol = col; sortDir = 1; }
+
+      const tbody = document.getElementById('networks-tbody');
+      const rows  = Array.from(document.querySelectorAll('.network-row'));
+      const noRow = document.getElementById('no-results-row');
+
+      rows.sort((a, b) => {
+        if (col === 'name')   return sortDir * a.dataset.name.localeCompare(b.dataset.name);
+        if (col === 'driver') return sortDir * a.dataset.driver.localeCompare(b.dataset.driver);
+        return 0;
+      });
+      rows.forEach(r => tbody.insertBefore(r, noRow));
+
+      ['name','driver'].forEach(c => {
+        const el = document.getElementById('sort-arrow-' + c);
+        if (el) el.textContent = c === col ? (sortDir === 1 ? ' ↑' : ' ↓') : '';
+      });
+
+      applyAll();
+    }
+
+    const hash = location.hash.slice(1);
+    if (hash) setFilter(hash);
+
+    /* ── drawer ─────────────────────────────────────────────────── */
+    function escHtml(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function labelsHtml(obj) {
+      if (!obj || !Object.keys(obj).length) return '';
+      return `<div>
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Labels</p>
+        <div class="space-y-1 bg-gray-50 rounded-lg p-3 border border-gray-100">
+          ${Object.entries(obj).map(([k,v]) =>
+            `<div class="flex gap-2 text-xs leading-relaxed">
+               <span class="font-mono text-gray-500 shrink-0">${escHtml(k)}</span>
+               <span class="text-gray-400">=</span>
+               <span class="font-mono text-gray-700 break-all">${escHtml(v)}</span>
+             </div>`).join('')}
+        </div></div>`;
+    }
+
+    const STATUS_BADGE = {
+      'in-use': '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700"><span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>In use</span>',
+      unused:   '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700"><span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span>Unused</span>',
+      system:   '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500"><span class="h-1.5 w-1.5 rounded-full bg-gray-400"></span>System</span>',
+    };
+
+    function openDrawer(row) {
+      const n = JSON.parse(row.dataset.net);
+
+      document.getElementById('drawer-content').innerHTML = `
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            ${STATUS_BADGE[n.status] || ''}
+            ${n.internal ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Internal</span>' : ''}
+          </div>
+          <p class="font-semibold text-gray-900 text-base break-all">${escHtml(n.name)}</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-100">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Driver</p>
+            <p class="text-lg font-bold text-gray-900">${escHtml(n.driver)}</p>
+          </div>
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-100">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Scope</p>
+            <p class="text-lg font-bold text-gray-900 capitalize">${escHtml(n.scope)}</p>
+          </div>
+        </div>
+
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Network ID</p>
+          <p class="font-mono text-xs text-gray-500 break-all bg-gray-50 rounded-md px-3 py-2 border border-gray-100">${escHtml(n.id)}</p>
+        </div>
+
+        ${labelsHtml(n.labels)}
+      `;
+      document.getElementById('drawer-backdrop').classList.remove('hidden');
+      document.getElementById('net-drawer').classList.remove('translate-x-full');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeDrawer() {
+      document.getElementById('drawer-backdrop').classList.add('hidden');
+      document.getElementById('net-drawer').classList.add('translate-x-full');
+      document.body.style.overflow = '';
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+  </script>
+
+  <!-- Drawer backdrop -->
+  <div id="drawer-backdrop" class="hidden fixed inset-0 z-40 bg-black/40" onclick="closeDrawer()"></div>
+
+  <!-- Network details drawer -->
+  <aside id="net-drawer"
+         class="fixed top-14 right-0 h-[calc(100vh-3.5rem)] w-full sm:w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700
+                z-50 transform translate-x-full transition-transform duration-200 ease-in-out
+                overflow-y-auto shadow-xl flex flex-col">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 shrink-0">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Network details</h2>
+      <button onclick="closeDrawer()"
+              class="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-colors p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+    </div>
+    <div id="drawer-content" class="flex-1 px-6 py-5 overflow-y-auto space-y-5 text-sm text-gray-700 dark:text-gray-300"></div>
+  </aside>
+{% endif %}
+
+{% endblock %}

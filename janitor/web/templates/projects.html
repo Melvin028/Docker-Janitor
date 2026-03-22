@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %} — Projects{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Compose projects</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+      Resources grouped by <code class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded">com.docker.compose.project</code> label
+    </p>
+  </div>
+  {% if result %}
+    <div class="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+      <span>{{ project_groups|length }} project{{ 's' if project_groups|length != 1 }}</span>
+      {% if non_compose_count > 0 %}
+        <span class="text-gray-300 dark:text-gray-600">·</span>
+        <span>{{ non_compose_count }} non-Compose container{{ 's' if non_compose_count != 1 }}</span>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+<!-- flash messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, msg in messages %}
+    <div class="mb-4 rounded-xl px-4 py-3 text-sm flex items-center gap-2
+                {% if category == 'error' %}bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300
+                {% elif category == 'warning' %}bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-300
+                {% else %}bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300{% endif %}">
+      {{ msg }}
+    </div>
+  {% endfor %}
+{% endwith %}
+
+{% if not result %}
+  <!-- ── No scan ──────────────────────────────────────────────────────── -->
+  <div class="flex flex-col items-center justify-center py-24 text-center
+              bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+    <svg class="h-12 w-12 text-gray-300 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+    </svg>
+    <h2 class="text-base font-medium text-gray-700 dark:text-gray-300 mb-1">No scan data yet</h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Run a scan first to detect Compose projects.</p>
+    <form action="{{ url_for('main.do_scan') }}" method="post">
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white
+                     text-sm font-medium px-5 py-2 rounded-md transition-colors">
+        Run scan
+      </button>
+    </form>
+  </div>
+
+{% elif not project_groups %}
+  <!-- ── No Compose projects ─────────────────────────────────────────── -->
+  <div class="flex flex-col items-center justify-center py-20 text-center
+              bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+    <svg class="h-10 w-10 text-gray-300 dark:text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No Compose projects found</p>
+    <p class="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
+      None of the scanned containers have a
+      <code class="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">com.docker.compose.project</code> label.
+      Standalone containers appear here once labeled by Docker Compose.
+    </p>
+  </div>
+
+{% else %}
+  <!-- ── Project cards ──────────────────────────────────────────────── -->
+  <div class="space-y-5">
+    {% for proj in project_groups %}
+    {% set all_stopped = proj.all_stopped %}
+
+    <div class="bg-white dark:bg-gray-800 rounded-xl border
+                {% if all_stopped %}border-gray-200 dark:border-gray-700{% else %}border-green-200 dark:border-green-800{% endif %}
+                overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+
+      <!-- ── Project header ──────────────────────────────────────────── -->
+      <div class="px-5 py-4
+                  {% if all_stopped %}bg-gray-50 dark:bg-gray-700/40{% else %}bg-green-50/60 dark:bg-green-900/10{% endif %}
+                  border-b border-gray-100 dark:border-gray-700
+                  flex flex-wrap items-center justify-between gap-3">
+
+        <div class="flex items-center gap-3 min-w-0">
+          <!-- Docker compose icon -->
+          <div class="h-9 w-9 rounded-lg flex items-center justify-center shrink-0
+                      {% if all_stopped %}bg-gray-200 dark:bg-gray-600{% else %}bg-green-100 dark:bg-green-900/40{% endif %}">
+            <svg class="h-5 w-5 {% if all_stopped %}text-gray-500 dark:text-gray-400{% else %}text-green-600 dark:text-green-400{% endif %}"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+            </svg>
+          </div>
+
+          <div class="min-w-0">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
+              {{ proj.name }}
+            </h2>
+            <div class="flex flex-wrap items-center gap-1.5 mt-1">
+              {% if proj.services %}
+                {% for svc in proj.services %}
+                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium
+                               bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                    {{ svc }}
+                  </span>
+                {% endfor %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Right side: stats + action -->
+        <div class="flex items-center gap-3 shrink-0">
+          <!-- Running/stopped badges -->
+          <div class="flex items-center gap-2 text-xs">
+            {% if proj.running_count > 0 %}
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-medium
+                           bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                <span class="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                {{ proj.running_count }} running
+              </span>
+            {% endif %}
+            {% if proj.stopped_count > 0 %}
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-medium
+                           bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                {{ proj.stopped_count }} stopped
+              </span>
+            {% endif %}
+          </div>
+
+          <!-- Remove button (only if ALL stopped) -->
+          {% if all_stopped %}
+            <button
+              onclick="openRemoveModal('{{ proj.name }}', {{ proj.containers|length }}, {{ proj.volumes|length }})"
+              class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md
+                     bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400
+                     border border-red-200 dark:border-red-800
+                     hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+              Remove stack
+            </button>
+          {% else %}
+            <span class="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400
+                         bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700
+                         px-2.5 py-1.5 rounded-md">
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              Stop containers first
+            </span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ── Project body: 3-column grid ────────────────────────────── -->
+      <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x
+                  divide-gray-100 dark:divide-gray-700">
+
+        <!-- Containers column -->
+        <div class="px-5 py-4">
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2.5">
+            Containers ({{ proj.containers|length }})
+          </p>
+          <div class="space-y-1.5">
+            {% for c in proj.containers %}
+              <div class="flex items-center gap-2">
+                <span class="h-2 w-2 rounded-full shrink-0
+                             {% if c.is_running %}bg-green-500{% else %}bg-gray-300 dark:bg-gray-600{% endif %}">
+                </span>
+                <span class="text-xs text-gray-700 dark:text-gray-300 truncate" title="{{ c.name }}">
+                  {{ c.name }}
+                </span>
+                <span class="text-[10px] ml-auto shrink-0 font-medium
+                             {% if c.is_running %}text-green-600 dark:text-green-400
+                             {% else %}text-gray-400 dark:text-gray-500{% endif %}">
+                  {{ c.status | capitalize }}
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Images column -->
+        <div class="px-5 py-4">
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2.5">
+            Images ({{ proj.images|length }}) · {{ proj.total_image_human }}
+          </p>
+          {% if proj.images %}
+            <div class="space-y-1.5">
+              {% for img in proj.images %}
+                <div class="flex items-start gap-2">
+                  <svg class="h-3.5 w-3.5 text-blue-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M22.3 9.8c-.4-.3-1.4-.4-2.1-.3-.1-.8-.5-1.5-1.1-2l-.4-.3-.3.4c-.4.5-.5 1.4-.5 2 0 .4.1.9.4 1.2-.3.2-.9.4-1.7.4H1c-.1 1.1.1 2.3.6 3.3.6 1.1 1.4 2 2.5 2.5 1.2.6 2.5.9 3.8.9 2.6 0 5-1.1 6.5-3 1-.1 3.1-.1 4.2-2.2.1-.1.3-.5.3-.5l-.6-.4z"/>
+                  </svg>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs text-gray-700 dark:text-gray-300 truncate" title="{{ img.display_name }}">
+                      {{ img.display_name }}
+                    </p>
+                    <p class="text-[10px] text-gray-400 dark:text-gray-500">{{ img.size_human }}</p>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-xs text-gray-400 dark:text-gray-500 italic">No images found in scan</p>
+          {% endif %}
+        </div>
+
+        <!-- Volumes column -->
+        <div class="px-5 py-4">
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2.5">
+            Volumes ({{ proj.volumes|length }})
+          </p>
+          {% if proj.volumes %}
+            <div class="space-y-1.5">
+              {% for v in proj.volumes %}
+                <div class="flex items-center gap-2">
+                  <svg class="h-3.5 w-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                  </svg>
+                  <span class="text-xs text-gray-700 dark:text-gray-300 truncate" title="{{ v.name }}">
+                    {{ v.name }}
+                  </span>
+                  <span class="text-[10px] ml-auto shrink-0 font-medium
+                               {% if v.in_use %}text-green-600 dark:text-green-400{% else %}text-amber-500 dark:text-amber-400{% endif %}">
+                    {{ 'In use' if v.in_use else 'Orphaned' }}
+                  </span>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-xs text-gray-400 dark:text-gray-500 italic">No volumes found</p>
+          {% endif %}
+        </div>
+
+      </div><!-- /grid -->
+    </div><!-- /project card -->
+    {% endfor %}
+  </div><!-- /space-y -->
+
+  {% if non_compose_count > 0 %}
+  <div class="mt-5 px-4 py-3 bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600
+              rounded-xl text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
+    <span>
+      <strong class="text-gray-700 dark:text-gray-300">{{ non_compose_count }}</strong>
+      standalone container{{ 's' if non_compose_count != 1 }} not managed by Compose are not shown here.
+    </span>
+    <a href="{{ url_for('main.containers') }}"
+       class="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+      View all containers →
+    </a>
+  </div>
+  {% endif %}
+{% endif %}
+
+<!-- ── Remove confirmation modal ──────────────────────────────────────── -->
+<div id="remove-modal"
+     class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+     onclick="if(event.target===this)closeRemoveModal()">
+  <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md
+              border border-gray-200 dark:border-gray-700 p-6">
+    <div class="flex items-start gap-3 mb-4">
+      <div class="h-9 w-9 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+        <svg class="h-5 w-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+      </div>
+      <div>
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Remove stack</h3>
+        <p id="modal-desc" class="text-xs text-gray-500 dark:text-gray-400 mt-1"></p>
+      </div>
+    </div>
+
+    <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700
+                rounded-lg px-3 py-2.5 mb-5 text-xs text-amber-700 dark:text-amber-300">
+      This will permanently remove all containers and labeled volumes for this project.
+      Images will <strong>not</strong> be deleted.
+    </div>
+
+    <form id="remove-form" method="post" class="flex items-center justify-end gap-3">
+      <button type="button" onclick="closeRemoveModal()"
+              class="text-sm font-medium text-gray-600 dark:text-gray-400
+                     hover:text-gray-800 dark:hover:text-gray-200 transition-colors px-3 py-1.5">
+        Cancel
+      </button>
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white
+                     text-sm font-medium px-4 py-2 rounded-md transition-colors">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+        Remove stack
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+function openRemoveModal(projName, ctrCount, volCount) {
+  var desc  = document.getElementById('modal-desc');
+  var form  = document.getElementById('remove-form');
+  var parts = [ctrCount + ' container' + (ctrCount !== 1 ? 's' : '')];
+  if (volCount > 0) parts.push(volCount + ' volume' + (volCount !== 1 ? 's' : ''));
+  desc.textContent = 'Remove "' + projName + '": ' + parts.join(' + ') + ' will be deleted.';
+  form.action = '{{ url_for("main.projects") }}'.replace('/projects', '/projects/' + encodeURIComponent(projName) + '/remove');
+  document.getElementById('remove-modal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+function closeRemoveModal() {
+  document.getElementById('remove-modal').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeRemoveModal();
+});
+</script>
+
+{% endblock %}

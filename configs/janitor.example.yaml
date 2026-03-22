@@ -1,0 +1,48 @@
+# Docker Janitor — example configuration
+# Copy to configs/janitor.yaml and adjust for your environment.
+
+docker:
+  # Docker Desktop socket — set the correct value for your platform:
+  #   Windows : npipe:////./pipe/docker_engine
+  #   macOS   : unix:///Users/<you>/.docker/run/docker.sock
+  #   Linux   : unix:///var/run/docker.sock
+  # Leave unset to auto-detect based on the current platform.
+  # host: npipe:////./pipe/docker_engine
+
+policy:
+  # Remove images older than this many days
+  retention_days: 30
+
+  # Keep at least this many versions per image repository.
+  # Set to 1 to only protect the single newest image per repo.
+  # Set to 0 or remove to disable this guard entirely.
+  min_versions: 1
+
+  # Never delete images whose name/tag matches these patterns (supports wildcards).
+  # Tip: avoid adding "latest" here — use retention_days to control age instead.
+  keep_patterns:
+    - "production-*"
+
+  # Never delete images used by a running container (strongly recommended: true)
+  protect_running: true
+
+  # When true, ALL tagged images are protected regardless of age.
+  # Set to false to let retention_days and keep_patterns control what is removed.
+  protect_named: false
+
+notifications:
+  cli:
+    enabled: true
+
+  slack:
+    enabled: false
+    # Set SLACK_WEBHOOK_URL environment variable — do not hard-code here
+
+  webhook:
+    enabled: false
+    # Set JANITOR_WEBHOOK_URL environment variable — do not hard-code here
+
+  email:
+    enabled: false
+    # Set SMTP_HOST, SMTP_PORT, SMTP_SENDER, SMTP_RECIPIENTS,
+    # SMTP_USERNAME, SMTP_PASSWORD environment variables

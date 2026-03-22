@@ -1,0 +1,555 @@
+{% extends "base.html" %}
+{% block title %} — Images{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">Images</h1>
+    {% if result %}
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+        {{ result.images | length }} total &middot;
+        {{ result.unused_images | length }} unused &middot;
+        {{ result.dangling_images | length }} dangling
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+{% if not result %}
+  <div class="flex flex-col items-center justify-center py-24 text-center">
+    <p class="text-sm text-gray-500 mb-4">No scan data yet.</p>
+    <form action="{{ url_for('main.do_scan') }}" method="post"
+          onsubmit="var b=this.querySelector('button'),i=b.querySelector('svg'),l=b.querySelector('span');i.classList.add('spinning');l.textContent='Scanning\u2026';b.disabled=true;b.classList.add('opacity-75','cursor-not-allowed');">
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2 rounded-md transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+        </svg>
+        <span>Run scan</span>
+      </button>
+    </form>
+  </div>
+
+{% elif not result.images %}
+  <div class="flex flex-col items-center justify-center py-24 text-center">
+    <p class="text-sm text-gray-500">No images found on this Docker host.</p>
+  </div>
+
+{% else %}
+
+  <!-- Toolbar: filter pills + search -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div class="flex flex-wrap gap-2" id="filter-pills">
+      <button onclick="setFilter('all')" data-filter="all"
+              class="filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                     ring-2 ring-offset-1 ring-gray-400 bg-gray-100 text-gray-700 cursor-pointer">
+        All &nbsp;<span class="font-semibold">{{ result.images | length }}</span>
+      </button>
+      <button onclick="setFilter('in-use')" data-filter="in-use"
+              class="filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                     bg-green-100 text-green-700 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-green-400">
+        <span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
+        {{ result.images | selectattr('in_use') | list | length }} in use
+      </button>
+      <button onclick="setFilter('unused')" data-filter="unused"
+              class="filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                     bg-amber-100 text-amber-700 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-amber-400">
+        <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+        {{ result.unused_images | length }} unused
+      </button>
+      <button onclick="setFilter('dangling')" data-filter="dangling"
+              class="filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                     bg-red-100 text-red-700 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-red-400">
+        <span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+        {{ result.dangling_images | length }} dangling
+      </button>
+    </div>
+
+    <!-- Search -->
+    <div class="relative">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+      </svg>
+      <input id="search-input" type="text" placeholder="Search images…"
+             oninput="applyAll()"
+             class="pl-8 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600
+                    text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700
+                    placeholder-gray-400 dark:placeholder-gray-500
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-52" />
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+          <th class="px-5 py-3 text-left font-medium cursor-pointer select-none hover:text-gray-800 dark:hover:text-gray-200"
+              onclick="sortBy('name')">
+            Image <span id="sort-arrow-name" class="text-blue-500"></span>
+          </th>
+          <th class="px-5 py-3 text-left font-medium hidden md:table-cell">ID</th>
+          <th class="px-5 py-3 text-right font-medium cursor-pointer select-none hover:text-gray-800 dark:hover:text-gray-200"
+              onclick="sortBy('size')">
+            Size <span id="sort-arrow-size" class="text-blue-500">↓</span>
+          </th>
+          <th class="px-5 py-3 text-right font-medium cursor-pointer select-none hover:text-gray-800 dark:hover:text-gray-200 hidden sm:table-cell"
+              onclick="sortBy('age')">
+            Age <span id="sort-arrow-age" class="text-blue-500"></span>
+          </th>
+          <th class="px-5 py-3 text-left font-medium hidden lg:table-cell">Containers</th>
+          <th class="px-5 py-3 text-right font-medium">Status</th>
+          <th class="px-5 py-3 text-right font-medium w-10"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 dark:divide-gray-700" id="images-tbody">
+
+        {% for img in result.images | sort(attribute='size_bytes', reverse=true) %}
+          {% if img.is_dangling %}{% set status = 'dangling' %}
+          {% elif img.in_use %}{% set status = 'in-use' %}
+          {% else %}{% set status = 'unused' %}{% endif %}
+
+          {% set cnames = [] %}
+          {% for cid in img.container_ids %}
+            {% set c = containers_by_id.get(cid) %}
+            {% if c %}{% set _ = cnames.append(c.name) %}{% endif %}
+          {% endfor %}
+
+          {% set img_data = {
+            "id": img.id,
+            "short_id": img.short_id,
+            "tags": img.tags,
+            "display_name": img.display_name,
+            "size_human": img.size_human,
+            "size_bytes": img.size_bytes,
+            "age_days": img.age_days,
+            "created_at": img.created_at.isoformat(),
+            "parent_id": img.parent_id,
+            "labels": img.labels,
+            "container_names": cnames,
+            "status": status
+          } %}
+
+          <tr class="image-row hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-colors"
+              data-status="{{ status }}"
+              data-name="{{ img.display_name | lower }}"
+              data-size="{{ img.size_bytes }}"
+              data-age="{{ img.age_days }}"
+              data-img='{{ img_data | tojson }}'
+              onclick="openDrawer(this)">
+
+            <td class="px-5 py-3">
+              <div class="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[200px]" title="{{ img.display_name }}">
+                {{ img.display_name }}
+              </div>
+              {% if img.tags | length > 1 %}
+                <div class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">+{{ img.tags | length - 1 }} more tag{{ 's' if img.tags | length - 1 != 1 }}</div>
+              {% endif %}
+            </td>
+
+            <td class="px-5 py-3 hidden md:table-cell">
+              <span class="font-mono text-xs text-gray-400 dark:text-gray-500">{{ img.short_id }}</span>
+            </td>
+
+            <td class="px-5 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums whitespace-nowrap">
+              {{ img.size_human }}
+            </td>
+
+            <td class="px-5 py-3 text-right text-gray-500 dark:text-gray-400 hidden sm:table-cell whitespace-nowrap">
+              {{ img.age_days }}d
+            </td>
+
+            <td class="px-5 py-3 hidden lg:table-cell">
+              {% if img.container_ids %}
+                <div class="flex flex-wrap gap-1">
+                  {% for cid in img.container_ids %}
+                    {% set c = containers_by_id.get(cid) %}
+                    {% if c %}
+                      <a href="{{ url_for('main.containers') }}"
+                         title="{{ c.name }} ({{ c.status }})"
+                         onclick="event.stopPropagation()"
+                         class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
+                                {% if c.is_running %}bg-green-50 text-green-700 ring-1 ring-green-200
+                                {% else %}bg-gray-100 text-gray-600 ring-1 ring-gray-200{% endif %}">
+                        <span class="h-1.5 w-1.5 rounded-full {% if c.is_running %}bg-green-500{% else %}bg-gray-400{% endif %}"></span>
+                        {{ c.name | truncate(20, true, '…') }}
+                      </a>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              {% else %}
+                <span class="text-gray-400 dark:text-gray-500 text-xs">—</span>
+              {% endif %}
+            </td>
+
+            <td class="px-5 py-3 text-right">
+              {% if img.is_dangling %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Dangling</span>
+              {% elif img.in_use %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">In use</span>
+              {% else %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Unused</span>
+              {% endif %}
+            </td>
+
+            <td class="px-5 py-3 text-right text-gray-300 dark:text-gray-600">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+              </svg>
+            </td>
+
+          </tr>
+        {% endfor %}
+
+        <tr id="no-results-row" class="hidden">
+          <td colspan="7" class="px-5 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
+            No images match this filter.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </div><!-- /overflow-x-auto -->
+  </div>
+
+  <!-- ---------------------------------------------------------------- -->
+  <!-- Image details drawer                                              -->
+  <!-- ---------------------------------------------------------------- -->
+  <div id="drawer-backdrop"
+       class="hidden fixed inset-0 z-40 bg-black/40"
+       onclick="closeDrawer()"></div>
+
+  <aside id="image-drawer"
+         class="fixed top-14 right-0 h-[calc(100vh-3.5rem)] w-full sm:w-[28rem] bg-white dark:bg-gray-800
+                border-l border-gray-200 dark:border-gray-700
+                z-50 transform translate-x-full transition-transform duration-200 ease-in-out
+                shadow-xl flex flex-col">
+
+    <!-- Drawer header -->
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700 shrink-0">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">Image details</h2>
+      <button onclick="closeDrawer()"
+              class="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200
+                     transition-colors p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex border-b border-gray-100 dark:border-gray-700 shrink-0 px-6" id="drawer-tab-bar">
+      <button id="tab-details" onclick="switchTab('details')"
+              class="drawer-tab py-2.5 mr-5 text-sm font-medium border-b-2 border-blue-600 text-blue-600 dark:text-blue-400">
+        Details
+      </button>
+      <button id="tab-layers" onclick="switchTab('layers')"
+              class="drawer-tab py-2.5 mr-5 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+        Layers
+      </button>
+    </div>
+
+    <!-- Drawer body: Details -->
+    <div id="drawer-content" class="flex-1 px-6 py-5 overflow-y-auto space-y-5 text-sm text-gray-700 dark:text-gray-300"></div>
+
+    <!-- Drawer body: Layers (hidden by default) -->
+    <div id="drawer-layers" class="hidden flex-1 overflow-y-auto text-sm text-gray-700 dark:text-gray-300"></div>
+  </aside>
+
+  <script>
+    /* ── state ─────────────────────────────────────────────────── */
+    const ACTIVE_CLASSES = {
+      all:      ['ring-2','ring-offset-1','ring-gray-400', 'bg-gray-100','text-gray-700'],
+      'in-use': ['ring-2','ring-offset-1','ring-green-400','bg-green-100','text-green-700'],
+      unused:   ['ring-2','ring-offset-1','ring-amber-400','bg-amber-100','text-amber-700'],
+      dangling: ['ring-2','ring-offset-1','ring-red-400',  'bg-red-100',  'text-red-700'],
+    };
+
+    let activeFilter = 'all';
+    let sortCol = 'size';
+    let sortDir = -1;   // -1 = descending
+
+    /* ── filter + search ───────────────────────────────────────── */
+    function setFilter(filter) {
+      activeFilter = filter;
+      document.querySelectorAll('.filter-pill').forEach(pill => {
+        const f = pill.dataset.filter;
+        const cls = ACTIVE_CLASSES[f] || [];
+        if (f === filter) pill.classList.add(...cls);
+        else pill.classList.remove(...cls);
+      });
+      applyAll();
+      history.replaceState(null, '', filter === 'all' ? location.pathname : '#' + filter);
+    }
+
+    function applyAll() {
+      const q = document.getElementById('search-input').value.toLowerCase().trim();
+      const rows = document.querySelectorAll('.image-row');
+      let visible = 0;
+      rows.forEach(row => {
+        const statusOk = activeFilter === 'all' || row.dataset.status === activeFilter;
+        const searchOk = !q || row.dataset.name.includes(q);
+        const show = statusOk && searchOk;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      document.getElementById('no-results-row').classList.toggle('hidden', visible > 0);
+    }
+
+    /* ── sort ──────────────────────────────────────────────────── */
+    function sortBy(col) {
+      if (sortCol === col) { sortDir *= -1; }
+      else { sortCol = col; sortDir = col === 'name' ? 1 : -1; }
+
+      const tbody = document.getElementById('images-tbody');
+      const rows  = Array.from(document.querySelectorAll('.image-row'));
+      const noResultsRow = document.getElementById('no-results-row');
+
+      rows.sort((a, b) => {
+        if (col === 'name') return sortDir * a.dataset.name.localeCompare(b.dataset.name);
+        if (col === 'size') return sortDir * (+a.dataset.size - +b.dataset.size);
+        if (col === 'age')  return sortDir * (+a.dataset.age  - +b.dataset.age);
+        return 0;
+      });
+      rows.forEach(r => tbody.insertBefore(r, noResultsRow));
+
+      ['name','size','age'].forEach(c => {
+        const el = document.getElementById('sort-arrow-' + c);
+        if (el) el.textContent = c === col ? (sortDir === 1 ? ' ↑' : ' ↓') : '';
+      });
+
+      applyAll();
+    }
+
+    /* ── helpers ───────────────────────────────────────────────── */
+    function escHtml(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function formatDate(iso) {
+      try { return new Date(iso).toLocaleString(undefined, {dateStyle:'medium',timeStyle:'short'}); }
+      catch { return iso; }
+    }
+
+    const STATUS_BADGE = {
+      'in-use':  '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">In use</span>',
+      unused:    '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Unused</span>',
+      dangling:  '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Dangling</span>',
+    };
+
+    /* ── tab switching ─────────────────────────────────────────── */
+    let _currentImageId = null;
+    let _layersLoaded   = false;
+
+    function switchTab(tab) {
+      const isDetails = tab === 'details';
+      document.getElementById('drawer-content').classList.toggle('hidden', !isDetails);
+      document.getElementById('drawer-layers').classList.toggle('hidden', isDetails);
+
+      document.querySelectorAll('.drawer-tab').forEach(btn => {
+        const active = btn.id === 'tab-' + tab;
+        btn.classList.toggle('border-blue-600', active);
+        btn.classList.toggle('text-blue-600',   active);
+        btn.classList.toggle('border-transparent', !active);
+        btn.classList.toggle('text-gray-500',   !active);
+      });
+
+      if (tab === 'layers' && !_layersLoaded && _currentImageId) {
+        loadLayers(_currentImageId);
+      }
+    }
+
+    /* ── layer visualizer ──────────────────────────────────────── */
+    function humanBytes(n) {
+      if (!n || n < 0) return '0 B';
+      if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+      if (n >= 1048576)    return (n / 1048576).toFixed(1) + ' MB';
+      if (n >= 1024)       return (n / 1024).toFixed(0) + ' KB';
+      return n + ' B';
+    }
+
+    function loadLayers(imageId) {
+      const el = document.getElementById('drawer-layers');
+      el.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+          <svg class="h-6 w-6 spinning" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <span class="text-sm">Loading layers…</span>
+        </div>`;
+
+      fetch('/api/image/' + encodeURIComponent(imageId) + '/layers')
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) { renderLayerError(el, data.error); return; }
+          renderLayers(el, data.layers || []);
+          _layersLoaded = true;
+        })
+        .catch(err => renderLayerError(el, String(err)));
+    }
+
+    function renderLayerError(el, msg) {
+      el.innerHTML = `<div class="px-6 py-10 text-center text-sm text-red-500">${escHtml(msg)}</div>`;
+    }
+
+    function renderLayers(el, layers) {
+      if (!layers.length) {
+        el.innerHTML = '<div class="px-6 py-10 text-center text-sm text-gray-400">No layer history available.</div>';
+        return;
+      }
+
+      const sharedCount = layers.filter(l => l.shared).length;
+      const summaryHtml = sharedCount
+        ? `<div class="px-5 py-3 bg-blue-50 border-b border-blue-100 text-xs text-blue-700 flex items-center gap-2">
+             <svg class="h-3.5 w-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+               <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/>
+             </svg>
+             ${sharedCount} layer${sharedCount !== 1 ? 's' : ''} shared with other images
+           </div>`
+        : '';
+
+      const rowsHtml = layers.map((layer, idx) => {
+        const cmd = layer.command || '<empty layer>';
+        const truncCmd = cmd.length > 60 ? cmd.substring(0, 60) + '…' : cmd;
+        const sharedBadge = layer.shared
+          ? `<span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700"
+                  title="Also used by: ${escHtml(layer.shared_by.join(', '))}">
+               shared &times;${layer.shared_by.length}
+             </span>`
+          : '';
+
+        const isFirst = idx === 0;
+        const connector = isFirst ? '' : `
+          <div class="absolute -top-3 left-3.5 w-px h-3 bg-gray-200"></div>`;
+
+        return `
+          <div class="relative pt-3 px-5 pb-0 group" title="${escHtml(cmd)}">
+            ${connector}
+            <div class="flex items-start gap-3">
+              <div class="relative mt-1 shrink-0">
+                <div class="h-2 w-2 rounded-full ${layer.shared ? 'bg-blue-400' : 'bg-gray-300'} ring-2 ring-white"></div>
+                ${idx < layers.length - 1 ? '<div class="absolute top-2 left-0.5 w-px h-full bg-gray-200"></div>' : ''}
+              </div>
+              <div class="flex-1 min-w-0 pb-3 border-b border-gray-50 group-last:border-0">
+                <div class="flex items-center justify-between gap-2 mb-0.5">
+                  <code class="text-xs text-gray-700 break-all leading-relaxed">${escHtml(truncCmd)}</code>
+                  ${sharedBadge}
+                </div>
+                <div class="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                  <span class="font-mono">${escHtml(layer.id)}</span>
+                  ${layer.size > 0 ? `<span class="text-gray-500 font-medium">${escHtml(layer.size_human)}</span>` : '<span>empty</span>'}
+                </div>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      el.innerHTML = `
+        ${summaryHtml}
+        <div class="py-3">${rowsHtml}</div>`;
+    }
+
+    /* ── drawer open/close ─────────────────────────────────────── */
+    function openDrawer(row) {
+      const img = JSON.parse(row.dataset.img);
+      _currentImageId = img.id;
+      _layersLoaded   = false;
+
+      // Reset to Details tab
+      switchTab('details');
+
+      const labelsHtml = Object.keys(img.labels || {}).length
+        ? `<div>
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Labels</p>
+            <div class="space-y-1 bg-gray-50 rounded-lg p-3 border border-gray-100">
+              ${Object.entries(img.labels).map(([k,v]) =>
+                `<div class="flex gap-2 text-xs leading-relaxed">
+                  <span class="font-mono text-gray-500 shrink-0">${escHtml(k)}</span>
+                  <span class="text-gray-400">=</span>
+                  <span class="font-mono text-gray-700 break-all">${escHtml(v)}</span>
+                 </div>`).join('')}
+            </div>
+           </div>`
+        : '';
+
+      const containersHtml = img.container_names.length
+        ? `<div>
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Used by</p>
+            <div class="flex flex-wrap gap-1.5">
+              ${img.container_names.map(n =>
+                `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                  <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+                  ${escHtml(n)}
+                 </span>`).join('')}
+            </div>
+           </div>`
+        : '';
+
+      const tagsHtml = img.tags.length
+        ? img.tags.map(t => `<span class="inline-block font-mono text-xs bg-gray-100 text-gray-700 rounded-md px-2 py-0.5 mr-1 mb-1 border border-gray-200">${escHtml(t)}</span>`).join('')
+        : '<span class="text-gray-400 text-xs italic">No tags (dangling image)</span>';
+
+      const parentHtml = img.parent_id
+        ? `<div>
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Parent image</p>
+            <span class="font-mono text-xs text-gray-500">${escHtml(img.parent_id.substring(0,12))}</span>
+           </div>`
+        : '';
+
+      document.getElementById('drawer-content').innerHTML = `
+        <div>
+          <div class="flex items-center gap-2 mb-2">${STATUS_BADGE[img.status] || ''}</div>
+          <p class="font-medium text-gray-900 break-all">${escHtml(img.display_name)}</p>
+        </div>
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">All tags</p>
+          <div>${tagsHtml}</div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-100">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Size</p>
+            <p class="text-lg font-bold text-gray-900">${escHtml(img.size_human)}</p>
+          </div>
+          <div class="bg-gray-50 rounded-lg p-3 border border-gray-100">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Age</p>
+            <p class="text-lg font-bold text-gray-900">${img.age_days}d</p>
+          </div>
+        </div>
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Created</p>
+          <p class="text-sm text-gray-700">${formatDate(img.created_at)}</p>
+        </div>
+        <div>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Image ID</p>
+          <p class="font-mono text-xs text-gray-500 break-all bg-gray-50 rounded-md px-3 py-2 border border-gray-100">
+            ${escHtml(img.id)}
+          </p>
+        </div>
+        ${parentHtml}
+        ${labelsHtml}
+        ${containersHtml}
+      `;
+
+      document.getElementById('drawer-backdrop').classList.remove('hidden');
+      document.getElementById('image-drawer').classList.remove('translate-x-full');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeDrawer() {
+      document.getElementById('drawer-backdrop').classList.add('hidden');
+      document.getElementById('image-drawer').classList.add('translate-x-full');
+      document.body.style.overflow = '';
+      _currentImageId = null;
+      _layersLoaded   = false;
+    }
+
+    /* ── init ──────────────────────────────────────────────────── */
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+    const hash = location.hash.slice(1);
+    if (hash) setFilter(hash);
+  </script>
+{% endif %}
+
+{% endblock %}

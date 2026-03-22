@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docker Janitor{% block title %}{% endblock %} — Zafin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    /* Apply saved dark-mode preference BEFORE paint to avoid flash */
+    (function () {
+      if (localStorage.getItem('theme') === 'dark' ||
+          (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#2563eb', dark: '#1d4ed8' }
+          }
+        }
+      }
+    }
+  </script>
+  {% block extra_head %}{% endblock %}
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinning { animation: spin 0.8s linear infinite; }
+
+    /* Sidebar slide-in on mobile */
+    #mobile-sidebar {
+      transform: translateX(-100%);
+      transition: transform 0.22s ease;
+    }
+    #mobile-sidebar.open {
+      transform: translateX(0);
+    }
+
+    /* Keyboard shortcut badge */
+    kbd {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: ui-monospace, monospace;
+      font-size: 0.7rem;
+      line-height: 1;
+      padding: 2px 5px;
+      border-radius: 4px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      color: #374151;
+      min-width: 1.4em;
+    }
+    .dark kbd {
+      border-color: #4b5563;
+      background: #1f2937;
+      color: #d1d5db;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100 antialiased transition-colors duration-200">
+
+  <!-- ── Top navigation ─────────────────────────────────────────────── -->
+  <nav class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-14">
+
+        <div class="flex items-center gap-3">
+          <!-- Hamburger (mobile only) -->
+          <button id="hamburger" onclick="openMobileSidebar()"
+                  class="lg:hidden p-1.5 rounded-md text-gray-500 dark:text-gray-400
+                         hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  aria-label="Open menu">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+          </button>
+
+          <!-- Logo -->
+          <a href="{{ url_for('main.dashboard') }}" class="flex items-center shrink-0">
+            <img src="{{ url_for('static', filename='img/logo.png') }}"
+                 alt="Docker Janitor"
+                 class="h-11 w-auto object-contain" />
+          </a>
+
+          <!-- Top nav links (hidden on small screens — use sidebar) -->
+          <div class="hidden lg:flex items-center gap-1 ml-4">
+            {% set nav_links = [
+              ('main.dashboard',        'Overview'),
+              ('main.images',           'Images'),
+              ('main.containers',       'Containers'),
+              ('main.volumes',          'Volumes'),
+              ('main.networks',         'Networks'),
+              ('main.projects',         'Projects'),
+              ('main.dependency_graph', 'Graph'),
+              ('main.stats',            'Stats'),
+            ] %}
+            {% for endpoint, label in nav_links %}
+              {% set active = (request.endpoint == endpoint) %}
+              <a href="{{ url_for(endpoint) }}"
+                 class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+                        {{ 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
+                           if active else
+                           'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700' }}">
+                {{ label }}
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Right side controls -->
+        <div class="flex items-center gap-2">
+
+          <!-- Keyboard shortcuts hint -->
+          <button onclick="document.getElementById('shortcuts-modal').classList.remove('hidden')"
+                  class="hidden sm:flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500
+                         hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1.5 rounded-md
+                         hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  title="Keyboard shortcuts">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+            <kbd>?</kbd>
+          </button>
+
+          <!-- Dark mode toggle -->
+          <button id="theme-toggle" onclick="toggleTheme()"
+                  class="p-2 rounded-md text-gray-500 dark:text-gray-400
+                         hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  aria-label="Toggle dark mode">
+            <!-- Sun (shown in dark mode) -->
+            <svg id="icon-sun" class="h-4 w-4 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657
+                       17.657l-.707-.707M6.343 6.343l-.707-.707M12 7a5 5 0 100 10A5 5 0 0012 7z"/>
+            </svg>
+            <!-- Moon (shown in light mode) -->
+            <svg id="icon-moon" class="h-4 w-4 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+            </svg>
+          </button>
+
+          <!-- Scan button -->
+          <form action="{{ url_for('main.do_scan') }}" method="post" id="scan-form">
+            <button id="scan-btn" type="submit"
+                    class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700
+                           active:bg-blue-800 text-white text-sm font-medium px-4 py-1.5
+                           rounded-md transition-colors whitespace-nowrap">
+              <svg id="scan-icon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd"
+                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002
+                         5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008
+                         9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0
+                         011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0
+                         01.61-1.276z" clip-rule="evenodd" />
+              </svg>
+              <span id="scan-label" class="hidden sm:inline">Run scan</span>
+            </button>
+          </form>
+
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Mobile sidebar backdrop ────────────────────────────────────── -->
+  <div id="sidebar-backdrop"
+       class="fixed inset-0 z-40 bg-black/40 hidden lg:hidden"
+       onclick="closeMobileSidebar()"></div>
+
+  <!-- ── Mobile sidebar ─────────────────────────────────────────────── -->
+  <aside id="mobile-sidebar"
+         class="fixed top-0 left-0 h-full w-64 z-50 bg-white dark:bg-gray-800
+                border-r border-gray-200 dark:border-gray-700 px-3 py-5 space-y-6
+                shadow-xl lg:hidden overflow-y-auto">
+    <div class="flex items-center justify-between px-3 mb-2">
+      <img src="{{ url_for('static', filename='img/logo.png') }}"
+           alt="Docker Janitor" class="h-8 w-auto object-contain" />
+      <button onclick="closeMobileSidebar()"
+              class="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200
+                     rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    {% include "partials/sidebar_links.html" ignore missing %}
+    {% set sidebar_resources = [
+      ('main.dashboard',        'Overview'),
+      ('main.images',           'Images'),
+      ('main.containers',       'Containers'),
+      ('main.volumes',          'Volumes'),
+      ('main.networks',         'Networks'),
+      ('main.projects',         'Projects'),
+      ('main.dependency_graph', 'Graph'),
+      ('main.stats',            'Stats'),
+    ] %}
+    {% set sidebar_mgmt = [
+      ('main.policy',   'Policy'),
+      ('main.cleanup',  'Cleanup'),
+      ('main.audit',    'Audit'),
+      ('main.settings', 'Settings'),
+    ] %}
+    <div>
+      <p class="px-3 mb-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Resources</p>
+      {% for endpoint, label in sidebar_resources %}
+        {% set active = (request.endpoint == endpoint) %}
+        <a href="{{ url_for(endpoint) }}" onclick="closeMobileSidebar()"
+           class="flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors
+                  {{ 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
+                     if active else
+                     'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700' }}">
+          {{ label }}
+        </a>
+      {% endfor %}
+    </div>
+    <div>
+      <p class="px-3 mb-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Management</p>
+      {% for endpoint, label in sidebar_mgmt %}
+        {% set active = (request.endpoint == endpoint) %}
+        <a href="{{ url_for(endpoint) }}" onclick="closeMobileSidebar()"
+           class="flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors
+                  {{ 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
+                     if active else
+                     'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700' }}">
+          {{ label }}
+        </a>
+      {% endfor %}
+    </div>
+  </aside>
+
+  <!-- ── Flash messages ─────────────────────────────────────────────── -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
+        {% for category, message in messages %}
+          <div class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium
+                      {{ 'bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-700'
+                         if category == 'success' else
+                         'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-700' }}">
+            {% if category == 'success' %}
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 12.586 7.707 11.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+            {% else %}
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+              </svg>
+            {% endif %}
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- ── Layout ─────────────────────────────────────────────────────── -->
+  <div class="flex w-full">
+
+    <!-- Desktop sidebar -->
+    <aside class="hidden lg:block w-52 shrink-0 border-r border-gray-200 dark:border-gray-700
+                  bg-white dark:bg-gray-800 min-h-[calc(100vh-3.5rem)]
+                  px-3 py-5 space-y-6 sticky top-14 self-start">
+
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Resources</p>
+        {% set sidebar_resources = [
+          ('main.dashboard',  'Overview'),
+          ('main.images',     'Images'),
+          ('main.containers', 'Containers'),
+          ('main.volumes',    'Volumes'),
+          ('main.networks',   'Networks'),
+        ] %}
+        {% for endpoint, label in sidebar_resources %}
+          {% set active = (request.endpoint == endpoint) %}
+          <a href="{{ url_for(endpoint) }}"
+             class="flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors
+                    {{ 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
+                       if active else
+                       'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700' }}">
+            {{ label }}
+          </a>
+        {% endfor %}
+      </div>
+
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Management</p>
+        {% set sidebar_mgmt = [
+          ('main.policy',   'Policy'),
+          ('main.cleanup',  'Cleanup'),
+          ('main.audit',    'Audit'),
+          ('main.settings', 'Settings'),
+        ] %}
+        {% for endpoint, label in sidebar_mgmt %}
+          {% set active = (request.endpoint == endpoint) %}
+          <a href="{{ url_for(endpoint) }}"
+             class="flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors
+                    {{ 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
+                       if active else
+                       'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700' }}">
+            {{ label }}
+          </a>
+        {% endfor %}
+      </div>
+
+    </aside>
+
+    <!-- Page content -->
+    <main class="flex-1 min-w-0 px-4 sm:px-6 py-6 sm:py-8">
+      {% block content %}{% endblock %}
+    </main>
+
+  </div>
+
+  <!-- ── Keyboard shortcuts modal ───────────────────────────────────── -->
+  <div id="shortcuts-modal"
+       class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+       onclick="if(event.target===this)document.getElementById('shortcuts-modal').classList.add('hidden')">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-sm border border-gray-200 dark:border-gray-700">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Keyboard shortcuts</h3>
+        <button onclick="document.getElementById('shortcuts-modal').classList.add('hidden')"
+                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="px-5 py-4 space-y-3 text-sm">
+        {% set shortcuts = [
+          ('S',   'Run scan'),
+          ('C',   'Go to Cleanup'),
+          ('A',   'Go to Audit log'),
+          ('D',   'Go to Dashboard'),
+          ('G',   'Go to Dependency graph'),
+          ('Esc', 'Close drawer / modal'),
+          ('?',   'Show this panel'),
+        ] %}
+        {% for key, desc in shortcuts %}
+          <div class="flex items-center justify-between">
+            <span class="text-gray-600 dark:text-gray-300">{{ desc }}</span>
+            <kbd>{{ key }}</kbd>
+          </div>
+        {% endfor %}
+      </div>
+      <p class="px-5 pb-4 text-xs text-gray-400 dark:text-gray-500">
+        Shortcuts are disabled while typing in a form field.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── Global scripts ─────────────────────────────────────────────── -->
+  <script>
+    /* ── Dark mode ─────────────────────────────────────────────── */
+    function toggleTheme() {
+      const html = document.documentElement;
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+      } else {
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+      }
+    }
+
+    /* ── Mobile sidebar ────────────────────────────────────────── */
+    function openMobileSidebar() {
+      document.getElementById('mobile-sidebar').classList.add('open');
+      document.getElementById('sidebar-backdrop').classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeMobileSidebar() {
+      document.getElementById('mobile-sidebar').classList.remove('open');
+      document.getElementById('sidebar-backdrop').classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+
+    /* ── Scan form spinner ─────────────────────────────────────── */
+    document.getElementById('scan-form').addEventListener('submit', function () {
+      var btn  = document.getElementById('scan-btn');
+      var icon = document.getElementById('scan-icon');
+      var lbl  = document.getElementById('scan-label');
+      icon.classList.add('spinning');
+      if (lbl) lbl.textContent = 'Scanning…';
+      btn.disabled = true;
+      btn.classList.add('opacity-75', 'cursor-not-allowed');
+    });
+
+    /* ── Keyboard shortcuts ────────────────────────────────────── */
+    document.addEventListener('keydown', function (e) {
+      // Skip when typing in an input / textarea / select / contenteditable
+      const tag = document.activeElement.tagName;
+      if (['INPUT','TEXTAREA','SELECT'].includes(tag) ||
+          document.activeElement.isContentEditable) return;
+      // Skip when a modifier key is held
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const key = e.key;
+
+      if (key === '?') {
+        e.preventDefault();
+        document.getElementById('shortcuts-modal').classList.remove('hidden');
+        return;
+      }
+      if (key === 'Escape') {
+        document.getElementById('shortcuts-modal').classList.add('hidden');
+        closeMobileSidebar();
+        // Let individual pages handle their own Esc (drawers/modals)
+        return;
+      }
+      if (key === 's' || key === 'S') {
+        e.preventDefault();
+        document.getElementById('scan-form').requestSubmit();
+        return;
+      }
+      if (key === 'c' || key === 'C') {
+        e.preventDefault();
+        window.location.href = '{{ url_for("main.cleanup") }}';
+        return;
+      }
+      if (key === 'a' || key === 'A') {
+        e.preventDefault();
+        window.location.href = '{{ url_for("main.audit") }}';
+        return;
+      }
+      if (key === 'd' || key === 'D') {
+        e.preventDefault();
+        window.location.href = '{{ url_for("main.dashboard") }}';
+        return;
+      }
+      if (key === 'g' || key === 'G') {
+        e.preventDefault();
+        window.location.href = '{{ url_for("main.dependency_graph") }}';
+        return;
+      }
+    });
+
+    /* ── Legacy helper (kept for compatibility) ────────────────── */
+    function spinOnSubmit(formId, btnId, iconId, labelId, newLabel, hoverClasses) {
+      var form = document.getElementById(formId);
+      if (!form) return;
+      form.addEventListener('submit', function () {
+        var btn  = document.getElementById(btnId);
+        var icon = document.getElementById(iconId);
+        var lbl  = document.getElementById(labelId);
+        if (icon) icon.classList.add('spinning');
+        if (lbl)  lbl.textContent = newLabel;
+        if (btn) {
+          btn.disabled = true;
+          (hoverClasses || []).forEach(function(c){ btn.classList.remove(c); });
+          btn.classList.add('opacity-75', 'cursor-not-allowed');
+        }
+      });
+    }
+  </script>
+
+</body>
+</html>
